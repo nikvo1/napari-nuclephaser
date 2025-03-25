@@ -1,0 +1,47 @@
+name: napari-nuclephaser
+display_name: NuclePhaser
+# use 'hidden' to remove plugin from napari hub search results
+visibility: public
+# see https://napari.org/stable/plugins/technical_references/manifest.html#fields for valid categories
+categories: ["Annotation", "Segmentation", "Acquisition"]
+contributions:
+  commands:
+    - id: napari-nuclephaser.make_points
+      title: Mark cells with points
+      python_name: napari_nuclephaser._widget:make_points
+    - id: napari-nuclephaser.directorypicker
+      title: Pick working directory
+      python_name: napari_nuclephaser._widget:directorypicker
+    - id: napari-nuclephaser.give_num_points
+      title: Count up the points
+      python_name: napari_nuclephaser._widget:give_num_points
+    - id: napari-nuclephaser.calibrate_with_known_number
+      title: Find best threshold for model with known number of object on image
+      python_name: napari_nuclephaser._widget:calibrate_with_known_number
+    - id: napari-nuclephaser.predict_on_stack
+      title: Predict on stack of images
+      python_name: napari_nuclephaser._widget:predict_on_stack
+    - id: napari-nuclephaser.convert_points_to_labels
+      title: Convert detection on stack from points to labels for tracking
+      python_name: napari_nuclephaser._widget:convert_points_to_labels
+    - id: napari-nuclephaser.calibrate_with_dapi_image
+      title: Calibrate model and calculate accuracy using Phase-DAPI image pair
+      python_name: napari_nuclephaser._widget:calibrate_with_dapi_image
+    - id: napari-nuclephaser.calibrate_with_points
+      title: Calibrate model and calculate accuracy using ground truth points layer
+      python_name: napari_nuclephaser._widget:calibrate_with_points
+  widgets:
+    - command: napari-nuclephaser.make_points
+      display_name: Predict on single image
+    - command: napari-nuclephaser.predict_on_stack
+      display_name: Predict on 1-stack
+    - command: napari-nuclephaser.calibrate_with_known_number
+      display_name: Calibrate with known number
+    - command: napari-nuclephaser.calibrate_with_dapi_image
+      display_name: Calibrate with DAPI image
+    - command: napari-nuclephaser.calibrate_with_points
+      display_name: Calibrate with points
+    - command: napari-nuclephaser.convert_points_to_labels
+      display_name: Convert points to labels
+    - command: napari-nuclephaser.give_num_points
+      display_name: Count points on single image
