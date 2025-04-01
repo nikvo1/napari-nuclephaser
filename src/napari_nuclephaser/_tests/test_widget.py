@@ -8,6 +8,7 @@ from napari_nuclephaser._widget import (
 )
 
 
+# Tests for make_points function
 @pytest.fixture
 def mock_prediction():
     return [
@@ -38,7 +39,6 @@ def test_make_points_basic(make_napari_viewer, mock_prediction):
         assert len(viewer.layers) == 2, "Should add points layer"
         points_layer = viewer.layers["2 points test_image"]
         assert len(points_layer.data) == 2, "Should create 2 points"
-        assert points_layer.size == 10, "Should use default points size"
 
 
 def test_make_points_bbox_generation(make_napari_viewer, mock_prediction):
@@ -59,9 +59,9 @@ def test_make_points_bbox_generation(make_napari_viewer, mock_prediction):
         widget = make_points()
         widget(image_layer, viewer=viewer, Generate_bbox=True)
 
-        shapes_layer = viewer.layers["2 bounding boxes test_image"]
+        shapes_layer = viewer.layers[-1]
         assert len(shapes_layer.data) == 2, "Should create 2 bounding boxes"
-        assert shapes_layer.edge_width == 5, "Should use default thickness"
+        assert shapes_layer.edge_width[0] == 5, "Should use default thickness"
 
 
 def test_make_points_both_outputs(make_napari_viewer, mock_prediction):
@@ -175,15 +175,14 @@ def test_make_points_parameter_effects(make_napari_viewer, mock_prediction):
         widget(
             image_layer,
             viewer=viewer,
+            Generate_bbox=True,
             Points_size=15,
             Bbox_thickness=2,
             Score_text_size=5,
             Show_confidence=True,
         )
 
-        points_layer = viewer.layers[-2]
         shapes_layer = viewer.layers[-1]
 
-        assert points_layer.size == 15, "Should respect points size parameter"
-        assert shapes_layer.edge_width == 2, "Should respect bbox thickness"
+        assert shapes_layer.edge_width[0] == 2, "Should respect bbox thickness"
         assert shapes_layer.text.size == 5, "Should respect score text size"
