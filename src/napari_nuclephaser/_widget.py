@@ -647,6 +647,9 @@ def calibrate_with_dapi_image(
         f"Calibration is complete! Best threshold for {Phase_model} is {best_threshold:.3f}"
     )
 
+    if len(test_part) == 0:
+        print("There are no images in the test part! Skipping tests...")
+        return None
     print("Running test. Initializing calibrated model for testing...")
     test_results = {"Predicted_count": [], "DAPI_count": []}
     calibrated_model, calibrated_model_type = initialize_model(
