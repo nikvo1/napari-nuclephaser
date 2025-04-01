@@ -651,6 +651,7 @@ def calibrate_with_dapi_image(
         print("There are no images in the test part! Skipping tests...")
         print(f"Best threshold for {Phase_model} is {best_threshold:.3f}")
         return None
+
     print("Running test. Initializing calibrated model for testing...")
     test_results = {"Predicted_count": [], "DAPI_count": []}
     calibrated_model, calibrated_model_type = initialize_model(
@@ -789,6 +790,9 @@ def calibrate_with_points(
         show_error(
             "Phase image is not a single frame! Can't calibrate on a stack of images"
         )
+        print(
+            "Phase image is not a single frame! Can't calibrate on a stack of images"
+        )
         return None
     if len(phase_pic.shape) == 2:
         phase_pic = cv2.cvtColor(phase_pic, cv2.COLOR_GRAY2RGB)
@@ -797,6 +801,12 @@ def calibrate_with_points(
         phase_pic = phase_pic.astype(np.uint8)
 
     points = Select_points_layer.data
+
+    print(len(points))
+    if len(points) == 0:
+        show_error("Points layer is empty! Can't proceed further")
+        print("Points layer is empty! Can't proceed further")
+        return None
 
     def split_image_and_points(image, points, window_size):
         height, width, _ = image.shape
@@ -896,6 +906,11 @@ def calibrate_with_points(
     print(
         f"Calibration is complete! Best threshold for {Phase_model} is {best_threshold:.3f}"
     )
+
+    if len(test_part) == 0:
+        print("There are no images in the test part! Skipping tests...")
+        print(f"Best threshold for {Phase_model} is {best_threshold:.3f}")
+        return None
 
     test_results = {"Predicted_count": [], "Ground_truth_count": []}
 
