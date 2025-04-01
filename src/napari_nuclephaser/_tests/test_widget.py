@@ -1,66 +1,178 @@
+from unittest.mock import Mock, patch
+
 import numpy as np
+import pytest
 
 from napari_nuclephaser._widget import (
-    ExampleQWidget,
-    ImageThreshold,
-    threshold_autogenerate_widget,
-    threshold_magic_widget,
+    make_points,
 )
 
 
-def test_threshold_autogenerate_widget():
-    # because our "widget" is a pure function, we can call it and
-    # test it independently of napari
-    im_data = np.random.random((100, 100))
-    thresholded = threshold_autogenerate_widget(im_data, 0.5)
-    assert thresholded.shape == im_data.shape
-    # etc.
+@pytest.fixture
+def mock_prediction():
+    return [
+        {"bbox": [10, 10, 20, 20], "score": 0.8},
+        {"bbox": [30, 30, 40, 40], "score": 0.9},
+    ]
 
 
-# make_napari_viewer is a pytest fixture that returns a napari viewer object
-# you don't need to import it, as long as napari is installed
-# in your testing environment
-def test_threshold_magic_widget(make_napari_viewer):
+def test_make_points_basic(make_napari_viewer, mock_prediction):
     viewer = make_napari_viewer()
-    layer = viewer.add_image(np.random.random((100, 100)))
+    image_layer = viewer.add_image(
+        np.random.randint(0, 256, (100, 100), dtype=np.uint8),
+        name="test_image",
+    )
 
-    # our widget will be a MagicFactory or FunctionGui instance
-    my_widget = threshold_magic_widget()
+    with (
+        patch("napari_nuclephaser._widget.initialize_model") as mock_init,
+        patch("napari_nuclephaser._widget.get_sliced_prediction") as mock_pred,
+    ):
+        mock_init.return_value = (Mock(), "mock_model")
+        mock_pred.return_value = Mock(
+            to_coco_predictions=lambda: mock_prediction
+        )
 
-    # if we "call" this object, it'll execute our function
-    thresholded = my_widget(viewer.layers[0], 0.5)
-    assert thresholded.shape == layer.data.shape
-    # etc.
+        widget = make_points()
+        widget(image_layer)
+
+        assert len(viewer.layers) == 2, "Should add points layer"
+        points_layer = viewer.layers["2 points test_image"]
+        assert len(points_layer.data) == 2, "Should create 2 points"
+        assert points_layer.size == 10, "Should use default points size"
 
 
-def test_image_threshold_widget(make_napari_viewer):
+def test_make_points_bbox_generation(make_napari_viewer, mock_prediction):
     viewer = make_napari_viewer()
-    layer = viewer.add_image(np.random.random((100, 100)))
-    my_widget = ImageThreshold(viewer)
+    image_layer = viewer.add_image(
+        np.random.randint(0, 256, (100, 100), dtype=np.uint8)
+    )
 
-    # because we saved our widgets as attributes of the container
-    # we can set their values without having to "interact" with the viewer
-    my_widget._image_layer_combo.value = layer
-    my_widget._threshold_slider.value = 0.5
+    with (
+        patch("napari_nuclephaser._widget.initialize_model") as mock_init,
+        patch("napari_nuclephaser._widget.get_sliced_prediction") as mock_pred,
+    ):
+        mock_init.return_value = (Mock(), "mock_model")
+        mock_pred.return_value = Mock(
+            to_coco_predictions=lambda: mock_prediction
+        )
 
-    # this allows us to run our functions directly and ensure
-    # correct results
-    my_widget._threshold_im()
-    assert len(viewer.layers) == 2
+        widget = make_points()
+        widget(image_layer, Generate_bbox=True)
+
+        shapes_layer = viewer.layers["2 bounding boxes test_image"]
+        assert len(shapes_layer.data) == 2, "Should create 2 bounding boxes"
+        assert shapes_layer.edge_width == 5, "Should use default thickness"
 
 
-# capsys is a pytest fixture that captures stdout and stderr output streams
-def test_example_q_widget(make_napari_viewer, capsys):
-    # make viewer and add an image layer using our fixture
+def test_make_points_both_outputs(make_napari_viewer, mock_prediction):
     viewer = make_napari_viewer()
-    viewer.add_image(np.random.random((100, 100)))
+    image_layer = viewer.add_image(
+        np.random.randint(0, 256, (100, 100), dtype=np.uint8)
+    )
 
-    # create our widget, passing in the viewer
-    my_widget = ExampleQWidget(viewer)
+    with (
+        patch("napari_nuclephaser._widget.initialize_model") as mock_init,
+        patch("napari_nuclephaser._widget.get_sliced_prediction") as mock_pred,
+    ):
+        mock_init.return_value = (Mock(), "mock_model")
+        mock_pred.return_value = Mock(
+            to_coco_predictions=lambda: mock_prediction
+        )
 
-    # call our widget method
-    my_widget._on_click()
+        widget = make_points()
+        widget(image_layer, Generate_points=True, Generate_bbox=True)
 
-    # read captured output and check that it's as we expected
-    captured = capsys.readouterr()
-    assert captured.out == "napari has 1 layers\n"
+        assert len(viewer.layers) == 3, "Should have image + points + shapes"
+        assert "2 points" in viewer.layers[-2].name
+        assert "2 bounding boxes" in viewer.layers[-1].name
+
+
+def test_make_points_default_generation(make_napari_viewer, mock_prediction):
+    viewer = make_napari_viewer()
+    image_layer = viewer.add_image(
+        np.random.randint(0, 256, (100, 100), dtype=np.uint8)
+    )
+
+    with (
+        patch("napari_nuclephaser._widget.initialize_model") as mock_init,
+        patch("napari_nuclephaser._widget.get_sliced_prediction") as mock_pred,
+    ):
+        mock_init.return_value = (Mock(), "mock_model")
+        mock_pred.return_value = Mock(
+            to_coco_predictions=lambda: mock_prediction
+        )
+
+        widget = make_points()
+        widget(image_layer, Generate_points=False, Generate_bbox=False)
+
+        assert "points" in viewer.layers[-1].name, "Should default to points"
+
+
+def test_make_points_output_messages(
+    make_napari_viewer, mock_prediction, capsys
+):
+    viewer = make_napari_viewer()
+    image_layer = viewer.add_image(
+        np.random.randint(0, 256, (100, 100), dtype=np.uint8)
+    )
+
+    with (
+        patch("napari_nuclephaser._widget.initialize_model") as mock_init,
+        patch("napari_nuclephaser._widget.get_sliced_prediction") as mock_pred,
+    ):
+        mock_init.return_value = (Mock(), "mock_model")
+        mock_pred.return_value = Mock(
+            to_coco_predictions=lambda: mock_prediction
+        )
+
+        widget = make_points()
+        widget(image_layer, Generate_bbox=True)
+
+        captured = capsys.readouterr()
+        assert "Initializing model..." in captured.out
+        assert "Performing sliced prediction..." in captured.out
+        assert "Generating boxes..." in captured.out
+
+
+def test_make_points_error_handling(make_napari_viewer):
+    viewer = make_napari_viewer()
+    # Create invalid 3D image
+    image_layer = viewer.add_image(np.random.rand(5, 100, 100))  # 5 frames
+
+    widget = make_points()
+    result = widget(image_layer)
+
+    assert result is None, "Should return None on error"
+    assert len(viewer.layers) == 1, "Shouldn't add layers on error"
+
+
+def test_make_points_parameter_effects(make_napari_viewer, mock_prediction):
+    viewer = make_napari_viewer()
+    image_layer = viewer.add_image(
+        np.random.randint(0, 256, (100, 100), dtype=np.uint8)
+    )
+
+    with (
+        patch("napari_nuclephaser._widget.initialize_model") as mock_init,
+        patch("napari_nuclephaser._widget.get_sliced_prediction") as mock_pred,
+    ):
+        mock_init.return_value = (Mock(), "mock_model")
+        mock_pred.return_value = Mock(
+            to_coco_predictions=lambda: mock_prediction
+        )
+
+        widget = make_points()
+        widget(
+            image_layer,
+            Points_size=15,
+            Bbox_thickness=2,
+            Score_text_size=5,
+            Show_confidence=True,
+        )
+
+        points_layer = viewer.layers[-2]
+        shapes_layer = viewer.layers[-1]
+
+        assert points_layer.size == 15, "Should respect points size parameter"
+        assert shapes_layer.edge_width == 2, "Should respect bbox thickness"
+        assert shapes_layer.text.size == 5, "Should respect score text size"
