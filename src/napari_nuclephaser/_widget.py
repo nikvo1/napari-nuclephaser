@@ -233,6 +233,7 @@ def make_points(
 )
 def predict_on_stack(
     Select_stack: Image,
+    viewer: napari.Viewer,
     Select_model=first_model,
     Postprocess="GREEDYNMM",
     Match_metric="IOS",

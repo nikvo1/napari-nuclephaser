@@ -3,9 +3,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 import pytest
 
-from napari_nuclephaser._widget import (
-    make_points,
-)
+from napari_nuclephaser._widget import make_points
 
 
 # Tests for make_points function
