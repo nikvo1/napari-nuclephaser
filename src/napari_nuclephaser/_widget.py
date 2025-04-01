@@ -383,8 +383,8 @@ def predict_on_stack(
 )
 def calibrate_with_known_number(
     Select_image: Image,
+    viewer: napari.Viewer,
     Select_model=first_model,
-    Model_type=model_type_list[0],
     Calibration_number=100,
     Postprocess="GREEDYNMM",
     Match_metric="IOS",
@@ -447,11 +447,11 @@ def calibrate_with_known_number(
 
     minimal_difference = np.inf
     best_threshold = 0
-    # Loop for finding the best confidence threshold. Iterates over thresholds with
+    # Loop for finding the best confidence threshold.
     for i in np.arange(0.01, 1, 0.01):
         number = np.count_nonzero(scores >= i)
         difference = abs(number - Calibration_number)
-        if difference < minimal_difference:
+        if difference <= minimal_difference:
             minimal_difference = difference
             best_threshold = round(i, 2)
     show_info(
@@ -476,6 +476,7 @@ def calibrate_with_known_number(
 def calibrate_with_dapi_image(
     Select_Phase_image: Image,
     Select_DAPI_image: Image,
+    viewer: napari.Viewer,
     Phase_model=first_model,
     DAPI_model=first_model,
     Division_size=640,
@@ -756,6 +757,7 @@ def calibrate_with_dapi_image(
 def calibrate_with_points(
     Select_Phase_image: Image,
     Select_points_layer: Points,
+    viewer: napari.Viewer,
     Phase_model=first_model,
     Division_size=640,
     Calibration_proportion=0.1,
@@ -996,7 +998,10 @@ def calibrate_with_points(
     Reference_image={"label": "Select reference image"},
 )
 def convert_points_to_labels(
-    Points_layer: Points, Reference_image: Image, Label_size=10
+    Points_layer: Points,
+    Reference_image: Image,
+    viewer: napari.Viewer,
+    Label_size=10,
 ):
     """Takes a Napari.Points layer (stacks are allowed) and reference image and returns points in Napari.Labels format.
     Main purpose is tracking with napari.btrack plugin (which accepts only Labels) or other plugins
