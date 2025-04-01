@@ -82,6 +82,7 @@ def create_unique_subfolder(parent_folder, subfolder_name):
 )
 def make_points(
     Select_image: Image,
+    viewer: napari.Viewer,
     Select_model=first_model,
     Postprocess="GREEDYNMM",
     Match_metric="IOS",

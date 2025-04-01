@@ -33,7 +33,7 @@ def test_make_points_basic(make_napari_viewer, mock_prediction):
         )
 
         widget = make_points()
-        widget(image_layer)
+        widget(image_layer, viewer=viewer)
 
         assert len(viewer.layers) == 2, "Should add points layer"
         points_layer = viewer.layers["2 points test_image"]
@@ -57,7 +57,7 @@ def test_make_points_bbox_generation(make_napari_viewer, mock_prediction):
         )
 
         widget = make_points()
-        widget(image_layer, Generate_bbox=True)
+        widget(image_layer, viewer=viewer, Generate_bbox=True)
 
         shapes_layer = viewer.layers["2 bounding boxes test_image"]
         assert len(shapes_layer.data) == 2, "Should create 2 bounding boxes"
@@ -80,7 +80,12 @@ def test_make_points_both_outputs(make_napari_viewer, mock_prediction):
         )
 
         widget = make_points()
-        widget(image_layer, Generate_points=True, Generate_bbox=True)
+        widget(
+            image_layer,
+            viewer=viewer,
+            Generate_points=True,
+            Generate_bbox=True,
+        )
 
         assert len(viewer.layers) == 3, "Should have image + points + shapes"
         assert "2 points" in viewer.layers[-2].name
@@ -103,7 +108,12 @@ def test_make_points_default_generation(make_napari_viewer, mock_prediction):
         )
 
         widget = make_points()
-        widget(image_layer, Generate_points=False, Generate_bbox=False)
+        widget(
+            image_layer,
+            viewer=viewer,
+            Generate_points=False,
+            Generate_bbox=False,
+        )
 
         assert "points" in viewer.layers[-1].name, "Should default to points"
 
@@ -126,7 +136,7 @@ def test_make_points_output_messages(
         )
 
         widget = make_points()
-        widget(image_layer, Generate_bbox=True)
+        widget(image_layer, viewer=viewer, Generate_bbox=True)
 
         captured = capsys.readouterr()
         assert "Initializing model..." in captured.out
@@ -140,7 +150,7 @@ def test_make_points_error_handling(make_napari_viewer):
     image_layer = viewer.add_image(np.random.rand(5, 100, 100))  # 5 frames
 
     widget = make_points()
-    result = widget(image_layer)
+    result = widget(image_layer, viewer=viewer)
 
     assert result is None, "Should return None on error"
     assert len(viewer.layers) == 1, "Shouldn't add layers on error"
@@ -164,6 +174,7 @@ def test_make_points_parameter_effects(make_napari_viewer, mock_prediction):
         widget = make_points()
         widget(
             image_layer,
+            viewer=viewer,
             Points_size=15,
             Bbox_thickness=2,
             Score_text_size=5,
