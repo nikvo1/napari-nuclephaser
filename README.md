@@ -19,7 +19,7 @@ We trained a series of [YOLOv5](https://github.com/ultralytics/yolov5) and [YOLO
 - YOLO models are fast, providing reasonable inference speed even with CPU.
 - Ability to predict and automatically count nuclei on stacks of images, making it convenient for cell population growth studies and individual cell tracking.
 
-![Inference examples](https://github.com/user-attachments/assets/e02a5597-0fe8-448f-a20d-6616d825692d)
+![Inference examples](https://github.com/user-attachments/assets/c7e4d0e6-44c1-4268-aae5-6bb78500d928)
 
 # Calibration algorithm
 
@@ -39,7 +39,7 @@ Accuracy metrics are [Mean Absolute Percentage Error (MAPE)](https://en.wikipedi
 
 # Models
 
-Currently only YOLOv5n, YOLOv5s, YOLOv11n and YOLOv11s models, as well as fluorescent nuclei detector YOLOv5s model are available (downloaded automatically with _pip install napari-nuclephaser_). We are currently working on adding YOLOv5m-x and YOLOv11m-x models. 
+Currently only YOLOv5n, YOLOv5s, YOLOv11n and YOLOv11s models, as well as fluorescent nuclei detector YOLOv5s are available (downloaded automatically with _pip install napari-nuclephaser_). We are currently working on adding YOLOv5m-x and YOLOv11m-x models. 
 
 # Plugin functionality
 napari-nuclephaser plugin offers following widgets:
