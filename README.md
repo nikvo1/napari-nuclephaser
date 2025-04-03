@@ -27,7 +27,7 @@ Result of object detection model inference is highly dependent on _confidence th
 
 ![Confidence threshold](https://github.com/user-attachments/assets/888bfc2b-9e6d-4fe8-b0e3-115b0ca4a394)
 
-We created several calibration algorithms (finding optimal confidence threshold) that allow adjusting models to specific use cases (cell types, magnifications, illumination settings, cameras etc.)
+We created several calibration (finding optimal confidence threshold) algorithms that allow adjusting models to specific use cases (cell types, magnifications, illumination settings, cameras etc.):
 - Calibration using known number of objects on an image. Doesn't produce accuracy metrics.
 - Calibration using fluorescent nuclei stain image (for example, DAPI image). Produces accuracy metrics.
 - Calibration using manual annotation of nuclei. Produces accuracy metrics.
@@ -39,7 +39,7 @@ Accuracy metrics are [Mean Absolute Percentage Error (MAPE)](https://en.wikipedi
 
 # Models
 
-Currently only YOLOv5n, YOLOv5s, YOLOv11n and YOLOv11s models, as well as fluorescent nuclei detector YOLOv5s model are available (downloaded automatically with pip install napari-nuclephaser). We are currently working on adding YOLOv5m-x and YOLOv11m-x models. 
+Currently only YOLOv5n, YOLOv5s, YOLOv11n and YOLOv11s models, as well as fluorescent nuclei detector YOLOv5s model are available (downloaded automatically with _pip install napari-nuclephaser_). We are currently working on adding YOLOv5m-x and YOLOv11m-x models. 
 
 # Plugin functionality
 napari-nuclephaser plugin offers following widgets:
