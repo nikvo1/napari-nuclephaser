@@ -14,15 +14,48 @@ napari-nuclephaser utilizes [Ultralytics](https://docs.ultralytics.com/) YOLO ob
 
 # Nuclei detection
 
-We trained a series of YOLOv5 and YOLOv11 models to detect nuclei on phase contrast images. It can be used for counting cells or for individual cell tracking (using nuclei detections as tracking marks). Prominent features of this approach are:
+We trained a series of [YOLOv5](https://github.com/ultralytics/yolov5) and [YOLOv11](https://github.com/ultralytics/ultralytics) models to detect nuclei on phase contrast images. It can be used for counting cells or for individual cell tracking (using nuclei detections as tracking marks). Prominent features of this approach are:
 - Napari-nuclephaser plugin inclues [obss/sahi](https://github.com/obss/sahi) functionality, allowing detection on images of arbitrary sizes. 
 - YOLO models are fast, providing reasonable inference speed even with CPU.
 - Ability to predict and automatically count nuclei on stacks of images, making it convenient for cell population growth studies and individual cell tracking.
+
+![Inference examples](https://github.com/user-attachments/assets/e02a5597-0fe8-448f-a20d-6616d825692d)
 
 # Calibration algorithm
 
 Result of object detection model inference is highly dependent on _confidence threshold_ parameter.
 
+![Confidence threshold](https://github.com/user-attachments/assets/888bfc2b-9e6d-4fe8-b0e3-115b0ca4a394)
+
+We created several calibration algorithms (finding optimal confidence threshold) that allow adjusting models to specific use cases (cell types, magnifications, illumination settings, cameras etc.)
+- Calibration using known number of objects on an image. Doesn't produce accuracy metrics.
+- Calibration using fluorescent nuclei stain image (for example, DAPI image). Produces accuracy metrics.
+- Calibration using manual annotation of nuclei. Produces accuracy metrics.
+
+Apart from optimal confidence threshold search, these algorithms return accuracy metrics for specific use cases. Given that the calibration image is large, only part of it is used for search of threshold, while the second part is used for evaluation model's accuracy. 
+Accuracy metrics are [Mean Absolute Percentage Error (MAPE)](https://en.wikipedia.org/wiki/Mean_absolute_percentage_error) and prediction-ground truth scatterplot, which shows how well model performs with different densities of cells. 
+
+![Calibration methods](https://github.com/user-attachments/assets/a229a3c4-fbe3-4945-9139-84dfcc2758ad)
+
+# Models
+
+Currently only YOLOv5n, YOLOv5s, YOLOv11n and YOLOv11s models, as well as fluorescent nuclei detector YOLOv5s model are available (downloaded automatically with pip install napari-nuclephaser). We are currently working on adding YOLOv5m-x and YOLOv11m-x models. 
+
+# Plugin functionality
+napari-nuclephaser plugin offers following widgets:
+- Widget for inference on single image. Result can be in the form of points or boxes with or without confidence scores. Automatically returns number of cells in the name of result layer.
+- Widget for inference on stack of images. Optionally can create .csv or .xlsx file at given location with counting results.
+- Widget for calibration using known number of cells.
+- Widget for calibration using fluorescent nuclei image (fluorescent nuclei detection model is used as a perfect predictor).
+- Widget for calibration using manual annotations.
+- Widget for transforming Napari Points layer into Labels layer, which allows turning detection in tracking algorithms-digestible form (in particular, [btrack](https://github.com/quantumjot/btrack)).
+- Widget for counting number of points in Points layer.
+
+We are currently working on documentation with full description of widgets and their parameters. For now, if you have questions about widgets and/or parameters, please refer to [ultralytics documentation](https://docs.ultralytics.com) and [obss/sahi documentation](https://github.com/obss/sahi)
+
+# Citation
+
+We are currently working on a paper with full description of our approach and how we trained and tested our models.
 
 ----------------------------------
 
