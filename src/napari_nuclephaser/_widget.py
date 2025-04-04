@@ -71,11 +71,45 @@ def create_unique_subfolder(parent_folder, subfolder_name):
 
 
 @magic_factory(
-    Postprocess={"choices": ["GREEDYNMM", "NMS", "NMM"]},
-    Match_metric={"choices": ["IOS", "IOU"]},
+    Postprocess={
+        "choices": ["GREEDYNMM", "NMS", "NMM"],
+        "tooltip": "An algorithm to process overlapping detections. See obss/sahi library docs for more details.",
+    },
+    Match_metric={
+        "choices": ["IOS", "IOU"],
+        "tooltip": "A metric to determine when two detections are two different detections overlapping or is it a one detection. Sett obss/sahi library docs for more details",
+    },
+    Generate_points={
+        "tooltip": "If chosen, Points layer will be created with point at the center of bounding box for each detection"
+    },
+    Generate_bbox={
+        "tooltip": "If chosen, Shapes layer will be created with rectangle representing bounding box of each detection"
+    },
+    Show_confidence={
+        "tooltip": "If chosen, each rectangle in Shapes layer will have confidence score of each detection printed above it"
+    },
+    Confidence_threshold={
+        "tooltip": "Parameter that determines how many detections will model return. Use calibration widgets to determine optimal threshold for your use case."
+    },
     Sahi_size={
-        "max": 100000
-    },  # Default setting creates limit at 1000, this prevents it
+        "max": 100000,  # Default setting creates limit at 1000, this prevents it
+        "tooltip": "Slicing window inference slice. The large image will be divided into small ones with this size in pixels. See obss/sahi library for more details",
+    },
+    Sahi_overlap={
+        "tooltip": "Relative overlap between sliding windows. See obss/sahi library docs for more details."
+    },
+    Intersection_threshold={
+        "tooltip": "A metric to determine when to detections are overlapping. If metric is higher than threshold, detections will be merged. See obss/sahi library docs for more details."
+    },
+    Points_size={
+        "tooltip": "Points size in results Points layer. Can be changed later by pressing Ctrl+A and moving Size slider in the layer itself"
+    },
+    Bbox_thickness={
+        "tooltip": "Thickness of the side of rectangles in Shapes layer if Generate bbox is chosen"
+    },
+    Score_text_size={
+        "tooltip": "Font size of confidence score text if Show confidence parameter is chosen"
+    },
     call_button="Predict",
     auto_call=False,
     result_widget=False,
