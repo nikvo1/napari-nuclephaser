@@ -10,12 +10,12 @@
 
 A Napari plugin to detect and count nuclei on phase contrast images
 
-napari-nuclephaser utilizes [Ultralytics](https://docs.ultralytics.com/) YOLO object detection models and [obss/sahi](https://github.com/obss/sahi) sliced inference methods to detect cell nuclei on phase contrast (and other brightfield) images of any size, including large whole slide ones. 
+napari-nuclephaser utilizes [Ultralytics](https://docs.ultralytics.com/) YOLO object detection models and [obss/sahi](https://github.com/obss/sahi) sliced inference methods to detect cell nuclei on phase contrast (and other brightfield) images of any size, including large whole slide ones.
 
 # Nuclei detection
 
 We trained a series of [YOLOv5](https://github.com/ultralytics/yolov5) and [YOLOv11](https://github.com/ultralytics/ultralytics) models to detect nuclei on phase contrast images. It can be used for counting cells or for individual cell tracking (using nuclei detections as tracking marks). Prominent features of this approach are:
-- Napari-nuclephaser plugin inclues [obss/sahi](https://github.com/obss/sahi) functionality, allowing detection on images of arbitrary sizes. 
+- Napari-nuclephaser plugin inclues [obss/sahi](https://github.com/obss/sahi) functionality, allowing detection on images of arbitrary sizes.
 - YOLO models are fast, providing reasonable inference speed even with CPU.
 - Ability to predict and automatically count nuclei on stacks of images, making it convenient for cell population growth studies and individual cell tracking.
 
@@ -32,14 +32,14 @@ We created several calibration (finding optimal confidence threshold) algorithms
 - Calibration using fluorescent nuclei stain image (for example, DAPI image). Produces accuracy metrics.
 - Calibration using manual annotation of nuclei. Produces accuracy metrics.
 
-Apart from optimal confidence threshold search, these algorithms return accuracy metrics for specific use cases. Given that the calibration image is large, only part of it is used for search of threshold, while the second part is used for evaluation model's accuracy. 
-Accuracy metrics are [Mean Absolute Percentage Error (MAPE)](https://en.wikipedia.org/wiki/Mean_absolute_percentage_error) and prediction-ground truth scatterplot, which shows how well model performs with different densities of cells. 
+Apart from optimal confidence threshold search, these algorithms return accuracy metrics for specific use cases. Given that the calibration image is large, only part of it is used for search of threshold, while the second part is used for evaluation model's accuracy.
+Accuracy metrics are [Mean Absolute Percentage Error (MAPE)](https://en.wikipedia.org/wiki/Mean_absolute_percentage_error) and prediction-ground truth scatterplot, which shows how well model performs with different densities of cells.
 
 ![Calibration methods](https://github.com/user-attachments/assets/a229a3c4-fbe3-4945-9139-84dfcc2758ad)
 
 # Models
 
-Currently only YOLOv5n, YOLOv5s, YOLOv11n and YOLOv11s models, as well as fluorescent nuclei detector YOLOv5s are available (downloaded automatically with _pip install napari-nuclephaser_). We are currently working on adding YOLOv5m-x and YOLOv11m-x models. 
+Currently only YOLOv5n, YOLOv5s, YOLOv11n and YOLOv11s models, as well as fluorescent nuclei detector YOLOv5s are available (downloaded automatically with _pip install napari-nuclephaser_). We are currently working on adding YOLOv5m-x and YOLOv11m-x models.
 
 # Plugin functionality
 napari-nuclephaser plugin offers following widgets:
@@ -51,7 +51,7 @@ napari-nuclephaser plugin offers following widgets:
 - Widget for transforming Napari Points layer into Labels layer, which allows turning detection in tracking algorithms-digestible form (in particular, [btrack](https://github.com/quantumjot/btrack)).
 - Widget for counting number of points in Points layer.
 
-We are currently working on documentation with full description of widgets and their parameters. For now, if you have questions about widgets and/or parameters, please refer to [ultralytics documentation](https://docs.ultralytics.com) and [obss/sahi documentation](https://github.com/obss/sahi)
+Hover with a mouse over a parameter to get a tooltip with short description of functionality. We are currently working on documentation with full description of widgets and their parameters. For now, if you have questions about widgets and/or parameters, please refer to [ultralytics documentation](https://docs.ultralytics.com) and [obss/sahi documentation](https://github.com/obss/sahi)
 
 # Citation
 
