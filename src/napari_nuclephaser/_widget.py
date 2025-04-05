@@ -448,9 +448,6 @@ def predict_on_stack(
         "choices": ["IOS", "IOU"],
         "tooltip": "A metric to determine when two detections are two different detections overlapping or is it a one detection. Sett obss/sahi library docs for more details",
     },
-    Confidence_threshold={
-        "tooltip": "Parameter that determines how many detections will model return. Use calibration widgets to determine optimal threshold for your use case."
-    },
     Calibration_number={
         "max": 10000000,
         "tooltip": "The ground truth number of objects on the image. Widget will return model confidence threshold that returns closest number of objects to this number",
