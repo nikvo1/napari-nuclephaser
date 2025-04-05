@@ -1,3 +1,7 @@
+import matplotlib
+
+matplotlib.use("Agg")  # Set backend before other imports
+
 import numpy as np
 
 from napari_nuclephaser._widget import calibrate_with_known_number

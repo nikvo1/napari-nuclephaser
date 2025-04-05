@@ -1,3 +1,7 @@
+import matplotlib
+
+matplotlib.use("Agg")  # Set backend before other imports
+
 import pathlib
 from unittest.mock import MagicMock
 
