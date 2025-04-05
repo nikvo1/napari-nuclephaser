@@ -257,9 +257,42 @@ def make_points(
 
 
 @magic_factory(
-    Postprocess={"choices": ["GREEDYNMM", "NMS", "NMM"]},
-    Match_metric={"choices": ["IOS", "IOU"]},
-    Sahi_size={"max": 100000},
+    Postprocess={
+        "choices": ["GREEDYNMM", "NMS", "NMM"],
+        "tooltip": "An algorithm to process overlapping detections. See obss/sahi library docs for more details.",
+    },
+    Match_metric={
+        "choices": ["IOS", "IOU"],
+        "tooltip": "A metric to determine when two detections are two different detections overlapping or is it a one detection. Sett obss/sahi library docs for more details",
+    },
+    Confidence_threshold={
+        "tooltip": "Parameter that determines how many detections will model return. Use calibration widgets to determine optimal threshold for your use case."
+    },
+    Sahi_size={
+        "max": 100000,  # Default setting creates limit at 1000, this prevents it
+        "tooltip": "Slicing window inference slice. The large image will be divided into small ones with this size in pixels. See obss/sahi library for more details",
+    },
+    Sahi_overlap={
+        "tooltip": "Relative overlap between sliding windows. See obss/sahi library docs for more details."
+    },
+    Intersection_threshold={
+        "tooltip": "A metric to determine when to detections are overlapping. If metric is higher than threshold, detections will be merged. See obss/sahi library docs for more details."
+    },
+    Points_size={
+        "tooltip": "Points size in results Points layer. Can be changed later by pressing Ctrl+A and moving Size slider in the layer itself"
+    },
+    Save_result={
+        "tooltip": "If chosen, a folder will be created with .csv or .xlsx file containing quantification of objects for each frame"
+    },
+    Experiment_name={
+        "tooltip": "Name of the subfolder that will be created for the results"
+    },
+    Save_csv={
+        "tooltip": "If chosen, .csv format file with counting results will be saved at given folder"
+    },
+    Save_xlsx={
+        "tooltip": "If chosen, .xlsx format file with counting results will be saved at given folder"
+    },
     call_button="Predict",
     Save_folder={"mode": "d"},
     auto_call=False,
@@ -407,10 +440,31 @@ def predict_on_stack(
 
 
 @magic_factory(
-    Postprocess={"choices": ["GREEDYNMM", "NMS", "NMM"]},
-    Match_metric={"choices": ["IOS", "IOU"]},
-    Calibration_number={"max": 10000000},
-    Sahi_size={"max": 100000},
+    Postprocess={
+        "choices": ["GREEDYNMM", "NMS", "NMM"],
+        "tooltip": "An algorithm to process overlapping detections. See obss/sahi library docs for more details.",
+    },
+    Match_metric={
+        "choices": ["IOS", "IOU"],
+        "tooltip": "A metric to determine when two detections are two different detections overlapping or is it a one detection. Sett obss/sahi library docs for more details",
+    },
+    Confidence_threshold={
+        "tooltip": "Parameter that determines how many detections will model return. Use calibration widgets to determine optimal threshold for your use case."
+    },
+    Calibration_number={
+        "max": 10000000,
+        "tooltip": "The ground truth number of objects on the image. Widget will return model confidence threshold that returns closest number of objects to this number",
+    },
+    Sahi_size={
+        "max": 100000,  # Default setting creates limit at 1000, this prevents it
+        "tooltip": "Slicing window inference slice. The large image will be divided into small ones with this size in pixels. See obss/sahi library for more details",
+    },
+    Sahi_overlap={
+        "tooltip": "Relative overlap between sliding windows. See obss/sahi library docs for more details."
+    },
+    Intersection_threshold={
+        "tooltip": "A metric to determine when to detections are overlapping. If metric is higher than threshold, detections will be merged. See obss/sahi library docs for more details."
+    },
     call_button="Calibrate",
     auto_call=False,
     result_widget=True,
@@ -499,10 +553,37 @@ def calibrate_with_known_number(
         "max": 100000,
         "tooltip": "A small image size in pixel, the whole image will be divided into small ones with this size",
     },
-    Postprocess={"choices": ["GREEDYNMM", "NMS", "NMM"]},
-    Match_metric={"choices": ["IOS", "IOU"]},
+    Calibration_proportion={
+        "tooltip": "Determines which part of the result stack of small images will be used for calibration. The rest will be used for test"
+    },
+    Random_seed={
+        "tooltip": "Number used for random number generator, use the same random seeds for exact reproduction of results."
+    },
+    Postprocess={
+        "choices": ["GREEDYNMM", "NMS", "NMM"],
+        "tooltip": "An algorithm to process overlapping detections. See obss/sahi library docs for more details.",
+    },
+    Match_metric={
+        "choices": ["IOS", "IOU"],
+        "tooltip": "A metric to determine when two detections are two different detections overlapping or is it a one detection. Sett obss/sahi library docs for more details",
+    },
+    DAPI_confidence_threshold={
+        "tooltip": "Parameter that determines how many detections will DAPI model return. Use calibration widgets to determine optimal threshold for your use case."
+    },
     Save_folder={"mode": "d"},
-    Sahi_size={"max": 10000},
+    Sahi_size={
+        "max": 100000,  # Default setting creates limit at 1000, this prevents it
+        "tooltip": "Slicing window inference slice. The large image will be divided into small ones with this size in pixels. See obss/sahi library for more details",
+    },
+    Sahi_overlap={
+        "tooltip": "Relative overlap between sliding windows. See obss/sahi library docs for more details."
+    },
+    Intersection_threshold={
+        "tooltip": "A metric to determine when to detections are overlapping. If metric is higher than threshold, detections will be merged. See obss/sahi library docs for more details."
+    },
+    Experiment_name={
+        "tooltip": "Name of the subfolder that will be created for the results"
+    },
     call_button="Calibrate",
     auto_call=False,
     result_widget=True,
@@ -784,11 +865,35 @@ def calibrate_with_dapi_image(
 
 
 @magic_factory(
-    Division_size={"max": 10000},
-    Postprocess={"choices": ["GREEDYNMM", "NMS", "NMM"]},
-    Match_metric={"choices": ["IOS", "IOU"]},
+    Division_size={
+        "max": 100000,
+        "tooltip": "A small image size in pixel, the whole image will be divided into small ones with this size",
+    },
+    Calibration_proportion={
+        "tooltip": "Determines which part of the result stack of small images will be used for calibration. The rest will be used for test"
+    },
+    Postprocess={
+        "choices": ["GREEDYNMM", "NMS", "NMM"],
+        "tooltip": "An algorithm to process overlapping detections. See obss/sahi library docs for more details.",
+    },
+    Match_metric={
+        "choices": ["IOS", "IOU"],
+        "tooltip": "A metric to determine when two detections are two different detections overlapping or is it a one detection. Sett obss/sahi library docs for more details",
+    },
     Save_folder={"mode": "d"},
-    Sahi_size={"max": 10000},
+    Sahi_size={
+        "max": 100000,  # Default setting creates limit at 1000, this prevents it
+        "tooltip": "Slicing window inference slice. The large image will be divided into small ones with this size in pixels. See obss/sahi library for more details",
+    },
+    Sahi_overlap={
+        "tooltip": "Relative overlap between sliding windows. See obss/sahi library docs for more details."
+    },
+    Intersection_threshold={
+        "tooltip": "A metric to determine when to detections are overlapping. If metric is higher than threshold, detections will be merged. See obss/sahi library docs for more details."
+    },
+    Experiment_name={
+        "tooltip": "Name of the subfolder that will be created for the results"
+    },
     call_button="Calibrate",
     auto_call=False,
     result_widget=True,
