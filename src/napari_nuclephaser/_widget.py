@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 
 import cv2
+import matplotlib
 import napari.types
 import numpy as np
 import pandas as pd
@@ -16,6 +17,7 @@ from sahi import AutoDetectionModel
 from sahi.predict import get_sliced_prediction
 from torch import cuda
 
+matplotlib.use("Agg")
 # cuda device check
 cuda_available = "cuda:0" if cuda.is_available() else "cpu"
 
