@@ -20,9 +20,7 @@ from torch import cuda
 cuda_available = "cuda:0" if cuda.is_available() else "cpu"
 
 # find default models folder
-models_folder = pathlib.Path(
-    str("/".join(__file__.split("\\")[:-1])) + "/models/"
-)
+models_folder = pathlib.Path(pathlib.Path(__file__).parent / "models")
 first_model = next((x for x in models_folder.iterdir() if x.is_file()), None)
 model_type_list = ("yolov5", "ultralytics", "yolov8", "yolov11", "yolo11")
 
@@ -403,16 +401,24 @@ def predict_on_stack(
         subfolder = create_unique_subfolder(
             str(Save_folder), str(Experiment_name)
         )
-        file_name = subfolder + f"/{name} count results"
         df = pd.DataFrame.from_dict(result_table)
         if Save_csv:
-            df.to_csv(file_name + ".csv", index=False)
+            df.to_csv(
+                os.path.join(subfolder, f"{name} count results.csv"),
+                index=False,
+            )
             print(".csv file created successfuly")
         if Save_xlsx:
-            df.to_excel(file_name + ".xlsx", index=False)
+            df.to_excel(
+                os.path.join(subfolder, f"{name} count results.xlsx"),
+                index=False,
+            )
             print(".xlsx file created successfuly")
         if not Save_csv and not Save_xlsx:
-            df.to_csv(file_name + ".csv", index=False)
+            df.to_csv(
+                os.path.join(subfolder, f"{name} count results.csv"),
+                index=False,
+            )
             print(
                 "None of the options are chosen, creating .csv file as a default"
             )
@@ -430,7 +436,7 @@ def predict_on_stack(
         Intersection threshold: {Intersection_threshold}
         SAHI size: {Sahi_size}
         SAHI overlap: {Sahi_overlap}"""
-        metadata_path = subfolder + f"/{name} count metadata.txt"
+        metadata_path = os.path.join(subfolder, f"{name} count metadata.txt")
 
         with open(metadata_path, "w") as f:
             f.write(metadata)
@@ -832,7 +838,7 @@ def calibrate_with_dapi_image(
     )
     sns.lineplot(np.arange(0, test_ds["DAPI_count"].max(), 1), color="r")
     subfolder = create_unique_subfolder(str(Save_folder), str(Experiment_name))
-    file_name = subfolder + "/Calibration error plot.png"
+    file_name = os.path.join(subfolder, "/Calibration error plot.png")
     fig.savefig(file_name)
     plt.close(fig)
     print(f"Error plot is saved at {subfolder}")
@@ -856,7 +862,7 @@ def calibrate_with_dapi_image(
     SAHI overlap: {Sahi_overlap}
     Exact best threshold: {best_threshold}
     Exact result MAPE: {MAPE}%"""
-    metadata_path = subfolder + "/metadata.txt"
+    metadata_path = os.path.join(subfolder, "/metadata.txt")
     with open(metadata_path, "w") as f:
         f.write(metadata)
     print("Metadata file is saved!")
@@ -1116,7 +1122,7 @@ def calibrate_with_points(
         np.arange(0, test_ds["Ground_truth_count"].max(), 1), color="r"
     )
     subfolder = create_unique_subfolder(str(Save_folder), str(Experiment_name))
-    file_name = subfolder + "/Calibration error plot.png"
+    file_name = os.path.join(subfolder, "/Calibration error plot.png")
     fig.savefig(file_name)
     plt.close(fig)
     print(f"Error plot is saved at {subfolder}")
@@ -1141,7 +1147,7 @@ def calibrate_with_points(
     SAHI overlap: {Sahi_overlap}
     Exact best threshold: {best_threshold}
     Exact result MAPE: {MAPE}%"""
-    metadata_path = subfolder + "/metadata.txt"
+    metadata_path = os.path.join(subfolder, "/metadata.txt")
     with open(metadata_path, "w") as f:
         f.write(metadata)
     print("Metadata file is saved!")
