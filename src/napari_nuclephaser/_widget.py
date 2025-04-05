@@ -454,9 +454,6 @@ def predict_on_stack(
         "choices": ["IOS", "IOU"],
         "tooltip": "A metric to determine when two detections are two different detections overlapping or is it a one detection. Sett obss/sahi library docs for more details",
     },
-    Confidence_threshold={
-        "tooltip": "Parameter that determines how many detections will model return. Use calibration widgets to determine optimal threshold for your use case."
-    },
     Calibration_number={
         "max": 10000000,
         "tooltip": "The ground truth number of objects on the image. Widget will return model confidence threshold that returns closest number of objects to this number",
@@ -838,7 +835,7 @@ def calibrate_with_dapi_image(
     )
     sns.lineplot(np.arange(0, test_ds["DAPI_count"].max(), 1), color="r")
     subfolder = create_unique_subfolder(str(Save_folder), str(Experiment_name))
-    file_name = os.path.join(subfolder, "/Calibration error plot.png")
+    file_name = os.path.join(subfolder, "Calibration error plot.png")
     fig.savefig(file_name)
     plt.close(fig)
     print(f"Error plot is saved at {subfolder}")
@@ -862,7 +859,7 @@ def calibrate_with_dapi_image(
     SAHI overlap: {Sahi_overlap}
     Exact best threshold: {best_threshold}
     Exact result MAPE: {MAPE}%"""
-    metadata_path = os.path.join(subfolder, "/metadata.txt")
+    metadata_path = os.path.join(subfolder, "metadata.txt")
     with open(metadata_path, "w") as f:
         f.write(metadata)
     print("Metadata file is saved!")
@@ -1122,13 +1119,13 @@ def calibrate_with_points(
         np.arange(0, test_ds["Ground_truth_count"].max(), 1), color="r"
     )
     subfolder = create_unique_subfolder(str(Save_folder), str(Experiment_name))
-    file_name = os.path.join(subfolder, "/Calibration error plot.png")
+    file_name = os.path.join(subfolder, "Calibration error plot.png")
     fig.savefig(file_name)
     plt.close(fig)
     print(f"Error plot is saved at {subfolder}")
 
     print("Saving points...")
-    Select_points_layer.save(subfolder + "/reference points.csv")
+    Select_points_layer.save(os.path.join(subfolder, "reference points.csv"))
     print("Points used for calibration are saved!")
 
     print("Creating metadata file...")
@@ -1147,7 +1144,7 @@ def calibrate_with_points(
     SAHI overlap: {Sahi_overlap}
     Exact best threshold: {best_threshold}
     Exact result MAPE: {MAPE}%"""
-    metadata_path = os.path.join(subfolder, "/metadata.txt")
+    metadata_path = os.path.join(subfolder, "metadata.txt")
     with open(metadata_path, "w") as f:
         f.write(metadata)
     print("Metadata file is saved!")

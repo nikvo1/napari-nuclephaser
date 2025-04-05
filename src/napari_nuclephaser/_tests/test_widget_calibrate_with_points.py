@@ -58,7 +58,9 @@ def test_calibrate_with_points_happy_path(make_napari_viewer, mocker):
     assert "MAPE" in result
 
     # Verify points layer saving
-    mock_points_save.assert_called_once_with("/mock/path/reference points.csv")
+    expected_path = pathlib.Path("/mock/path/reference points.csv")
+    args, _ = mock_points_save.call_args
+    assert pathlib.Path(args[0]) == expected_path
 
     # Verify metadata file creation
     mock_create_folder.assert_called()

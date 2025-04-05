@@ -66,7 +66,9 @@ def test_calibrate_happy_path(make_napari_viewer, mocker):
     assert "MAPE" in result
     mock_sahi.assert_called()
     mock_create_folder.assert_called()
-    mock_file.assert_called_with("/mock/path/metadata.txt", "w")
+    expected_path = pathlib.Path("/mock/path/metadata.txt")
+    args, _ = mock_file.call_args
+    assert pathlib.Path(args[0]) == expected_path
     mock_file().write.assert_called()
 
 
