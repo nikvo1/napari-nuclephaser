@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        platform: [windows-latest]
+        platform: [windows-latest, macos-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
@@ -60,6 +60,8 @@ jobs:
           run: python -m tox
         env:
           PLATFORM: ${{ matrix.platform }}
+          DISPLAY: :0
+          QT_QPA_PLATFORM: offscreen
 
       - name: Coverage
         uses: codecov/codecov-action@v3

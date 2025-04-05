@@ -51,6 +51,7 @@ testing = [
     "pytest-mock",  # https://pytest-qt.readthedocs.io/en/latest/
     "napari",
     "pyqt5",
+    "opencv-python-headless"
 ]
 
 [project.entry-points."napari.manifest"]
