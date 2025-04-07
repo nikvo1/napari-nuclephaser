@@ -71,15 +71,56 @@ https://napari.org/stable/plugins/index.html
 
 ## Installation
 
-You can install `napari-nuclephaser` via [pip]:
+### Option 1: Using Anaconda (recommended)
 
-    pip install napari-nuclephaser
+We recommend installation using [Anaconda Distribution](https://www.anaconda.com/)
 
+1. Install Anaconda with [Installation instructions](https://www.anaconda.com/docs/getting-started/anaconda/install)
 
+2. Open Anaconda Prompt using Search Bar or Anaconda Navigator
 
-To install latest development version :
+3. Create new environment with default anaconda packages using command
 
-    pip install git+https://github.com/nikvo1/napari-nuclephaser.git
+```sh
+conda create --name napari-env anaconda
+```
+4. Activate new environment using command
+
+```sh
+conda activate napari-env
+```
+5. Install [Napari](https://napari.org/stable/) using command
+   
+```sh
+pip install napari[all]
+```
+6. Verify napari installation using following command. It should open napari GUI.
+
+```sh
+napari
+```
+7. Install napari-nuclephase plugin using command
+
+```sh
+pip install napari-nuclephaser
+```
+8. Plugin is ready to be used! Start napari by typing
+
+```sh
+napari
+```
+Initialize plugin's widgets by opening Plugins window and choosing NuclePhaser.
+
+### Installation with GPU
+
+We are currently working on GPU-powered version of the plugin.
+
+### Option 2: Using standalone napari app (simpler)
+
+1. Download and install napari as standalone app using [installation instructions](https://napari.org/dev/tutorials/fundamentals/installation_bundle_conda.html)
+
+2. Search, download and install napari-nuclephaser plugin by opening the app, navigating to Plugins window and choosing Install/Uninstall plugins...
+
 
 
 ## Contributing
