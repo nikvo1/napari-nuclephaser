@@ -138,6 +138,8 @@ pip3 install torch torchvision torchaudio --index-url https://download.pytorch.o
 >pip3 install -U torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
 >```
 
+----------------------------------
+
 ### Option 2: Using standalone napari app (simpler)
 
 1. Download and install napari as standalone app using [installation instructions](https://napari.org/dev/tutorials/fundamentals/installation_bundle_conda.html)
