@@ -99,7 +99,7 @@ pip install napari[all]
 ```sh
 napari
 ```
-7. Install napari-nuclephase plugin using command
+7. Install napari-nuclephaser plugin using command
 
 ```sh
 pip install napari-nuclephaser
