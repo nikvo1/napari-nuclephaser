@@ -39,7 +39,7 @@ Accuracy metrics are [Mean Absolute Percentage Error (MAPE)](https://en.wikipedi
 
 # Models
 
-Currently only YOLOv5n, YOLOv5s, YOLOv11n and YOLOv11s models, as well as fluorescent nuclei detector YOLOv5s are available (downloaded automatically with _pip install napari-nuclephaser_). We are currently working on adding YOLOv5m-x and YOLOv11m-x models.
+Currently only YOLOv5n, YOLOv5s, YOLOv11n and YOLOv11s models, as well as fluorescent nuclei detector YOLOv5n are available (downloaded automatically with _pip install napari-nuclephaser_). We are currently working on adding YOLOv5m-x and YOLOv11m-x models.
 
 # Plugin functionality
 napari-nuclephaser plugin offers following widgets:
@@ -113,7 +113,30 @@ Initialize plugin's widgets by opening Plugins window and choosing NuclePhaser.
 
 ### Installation with GPU
 
-We are currently working on GPU-powered version of the plugin.
+If you have [NVIDIA GPU with CUDA](https://developer.nvidia.com/cuda-gpus), you can significantly increase plugin's speed. 
+
+To install GPU-powered version of the plugin, you first need to do all the steps for the installation using Anaconda (above). Then you need to:
+
+1. Install CUDA using [official instructions](https://developer.nvidia.com/cuda-downloads)
+> [!NOTE]
+> Check which versions of CUDA are supported by current [torch installation](https://pytorch.org/get-started/locally/) and consider [installing earlier ones](https://developer.nvidia.com/cuda-toolkit-archive)
+
+2. Check CUDA installation with nvidia-smi command in the command line.
+
+```sh
+nvidia-smi
+```
+3. In the environment with napari and napari-nuclephaser installed, install CUDA-supported torch by typing specific command for your system, which can be found at [torch installation page](https://pytorch.org/get-started/locally/). For example, if you have Windows-based system and CUDA 12.6, your line should look like
+
+```sh
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+```
+
+> [!WARNING]
+> During our tests, torchvision wasn't installed using this line. To avoid that, add -U after install:
+> ```sh
+>pip3 install -U torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+>```
 
 ### Option 2: Using standalone napari app (simpler)
 
