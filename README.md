@@ -144,7 +144,7 @@ pip3 install torch torchvision torchaudio --index-url https://download.pytorch.o
 
 2. Search, download and install napari-nuclephaser plugin by opening the app, navigating to Plugins window and choosing Install/Uninstall plugins...
 
-
+----------------------------------
 
 ## Contributing
 
