@@ -69,7 +69,7 @@ and review the napari docs for plugin developers:
 https://napari.org/stable/plugins/index.html
 -->
 
-## Installation
+# Installation
 
 ### Option 1: Using Anaconda (recommended)
 
