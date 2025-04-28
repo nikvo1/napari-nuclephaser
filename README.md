@@ -15,7 +15,7 @@ napari-nuclephaser utilizes [Ultralytics](https://docs.ultralytics.com/) YOLO ob
 # Nuclei detection
 
 We trained a series of [YOLOv5](https://github.com/ultralytics/yolov5) and [YOLOv11](https://github.com/ultralytics/ultralytics) models to detect nuclei on phase contrast images. It can be used for counting cells or for individual cell tracking (using nuclei detections as tracking marks). Prominent features of this approach are:
-- Napari-nuclephaser plugin inclues [obss/sahi](https://github.com/obss/sahi) functionality, allowing detection on images of arbitrary sizes.
+- Napari-nuclephaser plugin includes [obss/sahi](https://github.com/obss/sahi) functionality, allowing detection on images of arbitrary sizes.
 - YOLO models are fast, providing reasonable inference speed even with CPU.
 - Ability to predict and automatically count nuclei on stacks of images, making it convenient for cell population growth studies and individual cell tracking.
 
@@ -39,7 +39,10 @@ Accuracy metrics are [Mean Absolute Percentage Error (MAPE)](https://en.wikipedi
 
 # Models
 
-Currently only YOLOv5n, YOLOv5s, YOLOv11n and YOLOv11s models, as well as fluorescent nuclei detector YOLOv5s are available (downloaded automatically with _pip install napari-nuclephaser_). We are currently working on adding YOLOv5m-x and YOLOv11m-x models.
+Currently only YOLOv5n, YOLOv5s, YOLOv11n and YOLOv11s models, as well as fluorescent nuclei detector YOLOv5n are available (downloaded automatically with _pip install napari-nuclephaser_). We are currently working on adding YOLOv5m-x and YOLOv11m-x models.
+
+> [!NOTE]
+> Feel free to use the models published there without the plugin!
 
 # Plugin functionality
 napari-nuclephaser plugin offers following widgets:
@@ -69,7 +72,7 @@ and review the napari docs for plugin developers:
 https://napari.org/stable/plugins/index.html
 -->
 
-## Installation
+# Installation
 
 ### Option 1: Using Anaconda (recommended)
 
@@ -90,7 +93,7 @@ conda create --name napari-env anaconda
 conda activate napari-env
 ```
 5. Install [Napari](https://napari.org/stable/) using command
-   
+
 ```sh
 pip install napari[all]
 ```
@@ -99,7 +102,7 @@ pip install napari[all]
 ```sh
 napari
 ```
-7. Install napari-nuclephase plugin using command
+7. Install napari-nuclephaser plugin using command
 
 ```sh
 pip install napari-nuclephaser
@@ -113,7 +116,32 @@ Initialize plugin's widgets by opening Plugins window and choosing NuclePhaser.
 
 ### Installation with GPU
 
-We are currently working on GPU-powered version of the plugin.
+If you have [NVIDIA GPU with CUDA](https://developer.nvidia.com/cuda-gpus), you can significantly increase plugin's speed.
+
+To install GPU-powered version of the plugin, you first need to do all the steps for the installation using Anaconda (above). Then you need to:
+
+1. Install CUDA using [official instructions](https://developer.nvidia.com/cuda-downloads)
+> [!NOTE]
+> Check which versions of CUDA are supported by current [torch installation](https://pytorch.org/get-started/locally/) and consider [installing earlier ones](https://developer.nvidia.com/cuda-toolkit-archive)
+
+2. Check CUDA installation with nvidia-smi command in the command line.
+
+```sh
+nvidia-smi
+```
+3. In the environment with napari and napari-nuclephaser installed, install CUDA-supported torch by typing specific command for your system, which can be found at [torch installation page](https://pytorch.org/get-started/locally/). For example, if you have Windows-based system and CUDA 12.6, your line should look like
+
+```sh
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+```
+
+> [!WARNING]
+> During our tests, torchvision wasn't installed using this line. To avoid that, add -U after install:
+> ```sh
+>pip3 install -U torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+>```
+
+----------------------------------
 
 ### Option 2: Using standalone napari app (simpler)
 
@@ -121,7 +149,7 @@ We are currently working on GPU-powered version of the plugin.
 
 2. Search, download and install napari-nuclephaser plugin by opening the app, navigating to Plugins window and choosing Install/Uninstall plugins...
 
-
+----------------------------------
 
 ## Contributing
 
