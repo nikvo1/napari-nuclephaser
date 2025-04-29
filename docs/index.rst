@@ -6,25 +6,31 @@
 napari-nuclephaser documentation
 ================================
 
-Add your content using ``reStructuredText`` syntax. See the
-`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
-documentation for details.
+Welcome to the napari-nuclephsaer documentation!
 
-`Link <https://www.google.ru/>`_
-
-Some text :doc:`Link text </Options/hello 2>`
-
-Target link :ref:`Link text <Target>`
-
+To learn how NuclePhaser can be used for biological tasks, navigate to these sections:
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Guidelines
+   :maxdepth: 1
+   :caption: Biological tasks guidelines
 
-   Guidelines/Hello.rst
+   Biological tasks guidelines/Population growth curves.rst
+   Biological tasks guidelines/Individual cells tracking.rst
+
+To learn more about the algorithms behind the project, navigate to general information sections:
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Options
+   :maxdepth: 1
+   :caption: General information
 
-   Options/hello 2.rst
+   General information/Object detection overview.rst
+   General information/Sliced inference overview.rst
+   General information/Confidence threshold calibration.rst
+
+To learn more about widgets and their functions, navigate to the widget page you need:
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Widgets
+
+   Widgets/Predict on single image.rst

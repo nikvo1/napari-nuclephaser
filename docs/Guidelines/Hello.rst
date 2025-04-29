@@ -1,5 +1,0 @@
-Welcome stranger!
-+++++++++++++++++
-
-Key Goals
-=================
