@@ -15,8 +15,12 @@ SLIDING WINDOW GIF
 
 NuclePhaser utilizes `obss/sahi library <https://github.com/obss/sahi>`_ functionality to perform sliced inference.
 In all inference-related widgets of NuclePhaser there are SAHI-related parameters that are described below.
+Refer to original `obss/sahi library <https://github.com/obss/sahi>`_, if you have unresolved questions.
 
 **SAHI size** determines the size of the sliding window in pixels.
+
+**NOTE:** For the rest of the parameters the default ones set up in NuclePhaser widgets are optimal for detecting cell nuclei, as determined from our practice.
+We recommend changing them only if you shift to other task.
 
 Sliding windows should *overlap*, otherwise the objects on the junction will be processed incorrectly.
 **SAHI overlap** determines the part of the sliding window which would overlap with the next.

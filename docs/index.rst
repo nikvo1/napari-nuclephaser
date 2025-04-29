@@ -34,3 +34,6 @@ To learn more about widgets and their functions, navigate to the widget page you
    :caption: Widgets
 
    Widgets/Predict on single image.rst
+   Widgets/Calibrate with known number.rst
+   Widgets/Calibrate with DAPI.rst
+   Widgets/Calibrate with points.rst
