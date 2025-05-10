@@ -34,7 +34,7 @@ But if we know the ground truth number of objects on an image, we can try to fin
         :align: center
         :alt: The image didn't load(
 
-        There is only one optimal threshold returning the ground truth number of objects.
+        There is one optimal threshold returning the ground truth number of objects.
 
 In NuclePhaser, if the ground truth number of object is known (see below), the optimal threshold is found with iterative search starting from the lowest:
 
@@ -47,7 +47,7 @@ In NuclePhaser, if the ground truth number of object is known (see below), the o
 
 Behind the scenes, it happens by running inference only one time with the lowest confidence threshold (0.01).
 Then the result predictions are filtered by increasing confidence threshold until reaching the ground truth number.
-Since the prediction is performed only one, calibration process is very fast!
+Since the prediction is performed only once, calibration process is very fast!
 
 This process allows **tuning models** for specific use cases: cells, illumination options, etc., without training!
 
@@ -67,14 +67,16 @@ These models can be used as "perfect predictors". See more at :doc:`Calibrate wi
 3. With manual detection of nuclei. **Calibrate with points** widget is used for that.
 If you don't have fluorescent nuclei image, you can manually mark all the nuclei! See more at :doc:`Calibrate with points widget page </Widgets/Calibrate with points>`.
 
-NOTE: Instead of marking all nuclei manually, you can run prediction with uncalibrated model with :doc:`Predict on single image widget </Widgets/Predict on single image>` and then correct the wrong detections. It is much faster than do everything manually!
+.. tip:: Instead of marking all nuclei manually, you can run prediction with uncalibrated model with :doc:`Predict on single image widget </Widgets/Predict on single image>` and then correct the wrong detections. It is much faster than do everything manually!
 
 .. figure:: ../Images/Calibration_methods.png
-        :scale: 10 %
+        :scale: 9 %
         :align: center
         :alt: The image didn't load(
 
-        Calibration methods available at NuclePhaser
+        Calibration methods available at NuclePhaser.
+
+.. _Test_after_calibration:
 
 Test after calibration
 ++++++++++++++++++++++
@@ -92,6 +94,6 @@ For more information, see :doc:`Calibrate with DAPI widget page </Widgets/Calibr
 
         Workflow diagram of calibration and testing algorithms. **Calibrate with DAPI** and **Calibrate with points** are working this way.
 
-Two metrics are generated during tests: MAPE (LINK!!!!!!!) and prediction-ground truth scatterplot.
+Two metrics are generated during tests: `MAPE <https://en.wikipedia.org/wiki/Mean_absolute_percentage_error>`_ and prediction-ground truth scatterplot.
 The smaller the MAPE, the better. The closer predictions to the red line on scatterplot, the better.
 For more detailed information about the metrics, see our paper (coming soon).

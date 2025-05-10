@@ -30,7 +30,12 @@ Tracking is a computer vision task where an algorithm should connect objects bet
 Usually it is divided into two subtasks: creating tracking markers for each frame and linking those markers.
 Object detection algorithms are great tracking markers creators.
 
-COMBINED GIF
+.. figure:: ../Images/Tracking_cropped.gif
+        :scale: 40 %
+        :align: center
+        :alt: The image didn't load(
+
+        Two steps in automatic objects tracking. Frames are taken from `Cell Tracking Challenge <https://celltrackingchallenge.net/>`_. Markers are created with NuclePhaser.
 
 YOLO algorithms
 +++++++++++++++

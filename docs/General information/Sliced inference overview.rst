@@ -3,7 +3,7 @@ Overview of sliced inference approach
 
 Object detection models are taking an image of a certain size as an input.
 For example, YOLO models are accepting images 640x640 pixels.
-If an image will have a different size, it will be resized to 640x640.
+If an image has a different size, it will be resized to 640x640.
 But what if I have a large whole-slide image 10000x10000 pixels with thousands of objects?
 After compression to 640x640 it will loose all the information.
 
@@ -11,7 +11,12 @@ The simple solution to this problem is **sliced inference**.
 Instead of compressing large image, it is divided into small pieces.
 These pieces are processed seperately, and then all results are combined into one.
 
-SLIDING WINDOW GIF
+.. figure:: ../Images/Sliding_window.gif
+        :scale: 75 %
+        :align: center
+        :alt: The image didn't load(
+
+        Animation of sliding window inference. This is how NuclePhaser handles large images behind the scenes.
 
 NuclePhaser utilizes `obss/sahi library <https://github.com/obss/sahi>`_ functionality to perform sliced inference.
 In all inference-related widgets of NuclePhaser there are SAHI-related parameters that are described below.
@@ -19,10 +24,9 @@ Refer to original `obss/sahi library <https://github.com/obss/sahi>`_, if you ha
 
 **SAHI size** determines the size of the sliding window in pixels.
 
-**NOTE:** For the rest of the parameters the default ones set up in NuclePhaser widgets are optimal for detecting cell nuclei, as determined from our practice.
-We recommend changing them only if you shift to other task.
+.. note:: For the rest of the parameters the default ones set up in NuclePhaser widgets are optimal for detecting cell nuclei, as determined from our practice. We recommend changing them only if you shift to other task.
 
-Sliding windows should *overlap*, otherwise the objects on the junction will be processed incorrectly.
+Sliding windows should *overlap*, otherwise the objects on the junctions will be processed incorrectly.
 **SAHI overlap** determines the part of the sliding window which would overlap with the next.
 SAHI overlap of 0.2 means that windows will overlap by 20% horizontally and vertically.
 
