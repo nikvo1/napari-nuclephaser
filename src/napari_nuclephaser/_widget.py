@@ -761,6 +761,9 @@ def calibrate_with_dapi_image(
         best_threshold = 0
         best_difference = 100000
 
+        if detection_confidences.size == 0:
+            continue
+
         for i in np.arange(0.01, 1, 0.01):
             phase_count = int(sum(1 for x in detection_confidences if x > i))
             difference = abs(phase_count - dapi_count)
@@ -768,6 +771,11 @@ def calibrate_with_dapi_image(
                 best_difference = difference
                 best_threshold = round(i, 2)
         thresholds.append(best_threshold)
+
+    if len(thresholds) == 0:
+        print("Couldn't calibrate! Model didn't detect any objects")
+        show_error("Couldn't calibrate! Model didn't detect any objects")
+        return None
 
     best_threshold = np.array(thresholds).mean()
     print(
@@ -1051,6 +1059,9 @@ def calibrate_with_points(
         best_threshold = 0
         best_difference = 100000
 
+        if detection_confidences.size == 0:
+            continue
+
         for i in np.arange(0.01, 1, 0.01):
             phase_count = sum(x > i for x in detection_confidences)
             difference = abs(phase_count - ground_truth)
@@ -1058,6 +1069,11 @@ def calibrate_with_points(
                 best_difference = difference
                 best_threshold = round(i, 2)
         thresholds.append(best_threshold)
+
+    if len(thresholds) == 0:
+        print("Couldn't calibrate! Model didn't detect any objects")
+        show_error("Couldn't calibrate! Model didn't detect any objects")
+        return None
 
     best_threshold = np.array(thresholds).mean()
     print(
