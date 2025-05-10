@@ -12,6 +12,7 @@ import seaborn as sns
 from magicgui import magic_factory
 from matplotlib import pyplot as plt
 from napari.layers import Image, Points
+from napari.utils import progress
 from napari.utils.notifications import show_error, show_info
 from sahi import AutoDetectionModel
 from sahi.predict import get_sliced_prediction
@@ -348,7 +349,8 @@ def predict_on_stack(
     result_table = {"Frame": [], "Count": []}
 
     print("Running predictions...")
-    for i in range(len(pic)):
+    viewer.window._status_bar._toggle_activity_dock(True)
+    for i in progress(range(len(pic)), desc="Running predictions"):
         if (
             i == 0
         ):  # Clock the starting time for the first frame to assess the whole stack processing time
@@ -396,6 +398,7 @@ def predict_on_stack(
             )
         print(f"Slice {i} is done!")
     viewer.add_points(points, size=Points_size, name=f"Points for {name}")
+    viewer.window._status_bar._toggle_activity_dock(False)
     print("Prediction is complete!")
 
     if Save_result:
@@ -714,7 +717,11 @@ def calibrate_with_dapi_image(
 
     print(f"Running calibration on {len(calibration_part)} images...")
     thresholds = []
-    for image in calibration_part:
+    viewer.window._status_bar._toggle_activity_dock(True)
+    for i in progress(
+        range(len(calibration_part)), desc="Running calibration"
+    ):
+        image = calibration_part[i]
         phase = cv2.cvtColor(image[0], cv2.COLOR_GRAY2RGB)
         dapi = cv2.cvtColor(image[1], cv2.COLOR_GRAY2RGB)
 
@@ -752,7 +759,7 @@ def calibrate_with_dapi_image(
             detection_confidences.append(box.score.value)
 
         best_threshold = 0
-        best_difference = np.inf
+        best_difference = 100000
 
         for i in np.arange(0.01, 1, 0.01):
             phase_count = sum(x > i for x in detection_confidences)
@@ -783,7 +790,8 @@ def calibrate_with_dapi_image(
     print("Calibrated model is initialized!")
 
     print(f"Running test on {len(test_part)} images...")
-    for image in test_part:
+    for i in progress(range(len(test_part)), desc="Running test"):
+        image = test_part[i]
         phase = cv2.cvtColor(image[0], cv2.COLOR_GRAY2RGB)
         dapi = cv2.cvtColor(image[1], cv2.COLOR_GRAY2RGB)
 
@@ -819,6 +827,7 @@ def calibrate_with_dapi_image(
         phase_count = len(phase_result.object_prediction_list)
         test_results["Predicted_count"].append(phase_count)
     print("Test is complete!")
+    viewer.window._status_bar._toggle_activity_dock(False)
     test_ds = pd.DataFrame.from_dict(test_results)
 
     test_ds["Error"] = (
@@ -1011,9 +1020,13 @@ def calibrate_with_points(
 
     print(f"Running calibration on {len(calibration_part)} images...")
     thresholds = []
-    for image, points in zip(
-        calibration_part, calibration_points, strict=False
+    viewer.window._status_bar._toggle_activity_dock(True)
+    for i in progress(
+        range(len(calibration_part)), desc="Running calibration"
     ):
+
+        image = calibration_part[i]
+        points = calibration_points[i]
 
         ground_truth = points
 
@@ -1067,7 +1080,11 @@ def calibrate_with_points(
     )
 
     print(f"Running test on {len(test_part)} images...")
-    for image, points in zip(test_part, test_points, strict=False):
+    for i in progress(range(len(test_part)), desc="Running calibration"):
+
+        image = test_part[i]
+        points = test_points[i]
+
         ground_truth = points
         test_results["Ground_truth_count"].append(ground_truth)
 
@@ -1086,7 +1103,7 @@ def calibrate_with_points(
 
         phase_count = len(phase_result.object_prediction_list)
         test_results["Predicted_count"].append(phase_count)
-
+    viewer.window._status_bar._toggle_activity_dock(False)
     test_ds = pd.DataFrame.from_dict(test_results)
 
     test_ds["Error"] = (

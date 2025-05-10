@@ -93,7 +93,7 @@ conda create --name napari-env anaconda
 conda activate napari-env
 ```
 5. Install [Napari](https://napari.org/stable/) using command
-   
+
 ```sh
 pip install napari[all]
 ```
@@ -116,7 +116,7 @@ Initialize plugin's widgets by opening Plugins window and choosing NuclePhaser.
 
 ### Installation with GPU
 
-If you have [NVIDIA GPU with CUDA](https://developer.nvidia.com/cuda-gpus), you can significantly increase plugin's speed. 
+If you have [NVIDIA GPU with CUDA](https://developer.nvidia.com/cuda-gpus), you can significantly increase plugin's speed.
 
 To install GPU-powered version of the plugin, you first need to do all the steps for the installation using Anaconda (above). Then you need to:
 
