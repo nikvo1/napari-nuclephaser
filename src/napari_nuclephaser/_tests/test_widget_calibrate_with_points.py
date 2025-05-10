@@ -116,9 +116,14 @@ def test_calibrate_with_points_file_creation(
 
     # Setup valid data
     phase_layer = viewer.add_image(
-        np.random.randint(0, 256, (400, 400), dtype=np.uint8)
+        np.random.randint(0, 256, (2560, 2560), dtype=np.uint8)
     )
-    points_layer = viewer.add_points(np.array([[100, 100], [300, 300]]))
+
+    points = []
+    for i in range(0, 2560, 30):
+        for j in range(0, 2560, 30):
+            points.append([i, j])
+    points_layer = viewer.add_points(np.array(points))
 
     # Mock dependencies
     mocker.patch(
@@ -126,7 +131,9 @@ def test_calibrate_with_points_file_creation(
         return_value=(MagicMock(), "mock_model"),
     )
     mock_pred = MagicMock()
-    mock_pred.object_prediction_list = [MagicMock(score=MagicMock(value=0.5))]
+    mock_pred.object_prediction_list = [
+        MagicMock(score=MagicMock(value=x)) for x in np.arange(0.01, 1, 0.01)
+    ]
     mocker.patch(
         "napari_nuclephaser._widget.get_sliced_prediction",
         return_value=mock_pred,
@@ -146,7 +153,7 @@ def test_calibrate_with_points_file_creation(
         viewer=viewer,
         Select_Phase_image=phase_layer,
         Select_points_layer=points_layer,
-        Division_size=200,
+        Division_size=256,
         Calibration_proportion=0.2,
         Save_folder=tmp_path,
     )

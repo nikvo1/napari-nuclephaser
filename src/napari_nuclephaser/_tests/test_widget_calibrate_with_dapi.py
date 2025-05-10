@@ -13,8 +13,8 @@ from napari_nuclephaser._widget import calibrate_with_dapi_image
 def test_calibrate_happy_path(make_napari_viewer, mocker):
     # Setup viewer with valid 2D images
     viewer = make_napari_viewer()
-    phase_data = np.random.randint(0, 256, (100, 100), dtype=np.uint8)
-    dapi_data = np.random.randint(0, 256, (100, 100), dtype=np.uint8)
+    phase_data = np.random.randint(0, 256, (2560, 2560), dtype=np.uint8)
+    dapi_data = np.random.randint(0, 256, (2560, 2560), dtype=np.uint8)
 
     viewer.add_image(phase_data, name="Phase")
     viewer.add_image(dapi_data, name="DAPI")
@@ -34,9 +34,7 @@ def test_calibrate_happy_path(make_napari_viewer, mocker):
     )
     mock_result = MagicMock()
     mock_result.object_prediction_list = [
-        MagicMock(),
-        MagicMock(),
-        MagicMock(),
+        MagicMock(score=MagicMock(value=x)) for x in np.arange(0.01, 1, 0.01)
     ]
     mock_sahi.return_value = mock_result
 
@@ -58,8 +56,8 @@ def test_calibrate_happy_path(make_napari_viewer, mocker):
         viewer.layers["Phase"],
         viewer.layers["DAPI"],
         viewer=viewer,
-        Division_size=50,
-        Calibration_proportion=0.5,
+        Division_size=256,
+        Calibration_proportion=0.2,
         DAPI_confidence_threshold=0.5,
         Save_folder=pathlib.Path("/tmp"),
         Experiment_name="Test",
@@ -110,7 +108,7 @@ def test_file_creation_basic(make_napari_viewer, mocker, tmp_path):
     viewer = make_napari_viewer()
 
     # Create valid test images
-    image_size = 400
+    image_size = 2560
     phase_layer = viewer.add_image(
         np.random.randint(0, 256, (image_size, image_size)), name="Phase"
     )
@@ -127,7 +125,9 @@ def test_file_creation_basic(make_napari_viewer, mocker, tmp_path):
 
     # Mock predictions with valid results
     mock_pred = MagicMock()
-    mock_pred.object_prediction_list = [MagicMock(score=MagicMock(value=0.5))]
+    mock_pred.object_prediction_list = [
+        MagicMock(score=MagicMock(value=x)) for x in np.arange(0.01, 1, 0.01)
+    ]
     mocker.patch(
         "napari_nuclephaser._widget.get_sliced_prediction",
         return_value=mock_pred,
@@ -149,7 +149,7 @@ def test_file_creation_basic(make_napari_viewer, mocker, tmp_path):
         viewer=viewer,
         Select_Phase_image=phase_layer,
         Select_DAPI_image=dapi_layer,
-        Division_size=100,
+        Division_size=256,
         Calibration_proportion=0.2,
         Save_folder=tmp_path,
         Experiment_name="test_experiment",

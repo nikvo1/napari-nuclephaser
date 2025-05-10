@@ -738,7 +738,7 @@ def calibrate_with_dapi_image(
             verbose=0,
         )
 
-        dapi_count = len(dapi_result.object_prediction_list)
+        dapi_count = int(len(dapi_result.object_prediction_list))
 
         phase_result = get_sliced_prediction(
             phase,
@@ -755,19 +755,27 @@ def calibrate_with_dapi_image(
 
         detection_confidences = []
 
-        for box in phase_result.object_prediction_list:
-            detection_confidences.append(box.score.value)
+        if len(phase_result.object_prediction_list) > 0:
+            for box in phase_result.object_prediction_list:
+                detection_confidences.append(box.score.value)
 
         best_threshold = 0
         best_difference = 100000
 
+        if len(detection_confidences) == 0:
+            continue
+
         for i in np.arange(0.01, 1, 0.01):
-            phase_count = sum(x > i for x in detection_confidences)
+            phase_count = int(sum(1 for x in detection_confidences if x > i))
             difference = abs(phase_count - dapi_count)
             if difference < best_difference:
                 best_difference = difference
                 best_threshold = round(i, 2)
         thresholds.append(best_threshold)
+
+    if len(thresholds) == 0:
+        print("Couldn't calibrate! Model didn't detect any objects")
+        show_error("Couldn't calibrate! Model didn't detect any objects")
 
     best_threshold = np.array(thresholds).mean()
     print(
@@ -1051,6 +1059,9 @@ def calibrate_with_points(
         best_threshold = 0
         best_difference = 100000
 
+        if len(detection_confidences) == 0:
+            continue
+
         for i in np.arange(0.01, 1, 0.01):
             phase_count = sum(x > i for x in detection_confidences)
             difference = abs(phase_count - ground_truth)
@@ -1058,6 +1069,11 @@ def calibrate_with_points(
                 best_difference = difference
                 best_threshold = round(i, 2)
         thresholds.append(best_threshold)
+
+    if len(thresholds) == 0:
+        print("Couldn't calibrate! Model didn't detect any objects")
+        show_error("Couldn't calibrate! Model didn't detect any objects")
+        return None
 
     best_threshold = np.array(thresholds).mean()
     print(
