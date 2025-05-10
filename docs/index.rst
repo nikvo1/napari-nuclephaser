@@ -39,3 +39,4 @@ To learn more about widgets and their functions, navigate to the widget page you
    Widgets/Calibrate with DAPI.rst
    Widgets/Calibrate with points.rst
    Widgets/Convert points to labels.rst
+   Widgets/Count points on single image.rst

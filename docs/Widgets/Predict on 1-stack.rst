@@ -12,7 +12,7 @@ The widget returns detections in form of points (Napari Points layer) for each i
 The widget can also generate .csv or .xslx file with counting results for each image if the task is to :doc:`count objects </Biological tasks guidelines/Population growth curves>`
 Combined with :doc:`Convert points to labels widget </Widgets/Convert points to labels.rst>`, it can generate labels for :doc:`Individual cells tracking </Biological tasks guidelines/Individual cells tracking>`.
 
-.. important:: The widget prints the progress in the command line that you used to initiate the Napari. Unfortunately, if you're installed Napari as a stanalone application, the widget will run silently.
+.. important:: The widget prints the progress in the command line that you used to initiate the Napari.
 
 .. figure:: ../Images/Stack_CLI.jpg
         :scale: 50 %

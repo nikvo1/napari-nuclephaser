@@ -35,7 +35,7 @@ Object detection algorithms are great tracking markers creators.
         :align: center
         :alt: The image didn't load(
 
-        Two steps in automatic objects tracking. Frames are taken from `Cell Tracking Challenge <https://celltrackingchallenge.net/>`_. Markers are created with NuclePhaser.
+        Two steps in automatic objects tracking. Frames are taken from `Cell Tracking Challenge <https://celltrackingchallenge.net/>`_. Markers are created with NuclePhaser. Instead of bounding boxes, large green points are drawn at the center of those boxes.
 
 YOLO algorithms
 +++++++++++++++
