@@ -775,7 +775,6 @@ def calibrate_with_dapi_image(
     if len(thresholds) == 0:
         print("Couldn't calibrate! Model didn't detect any objects")
         show_error("Couldn't calibrate! Model didn't detect any objects")
-        return None
 
     best_threshold = np.array(thresholds).mean()
     print(
