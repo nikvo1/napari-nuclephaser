@@ -755,8 +755,9 @@ def calibrate_with_dapi_image(
 
         detection_confidences = []
 
-        for box in phase_result.object_prediction_list:
-            detection_confidences.append(box.score.value)
+        if len(phase_result.object_prediction_list) > 0:
+            for box in phase_result.object_prediction_list:
+                detection_confidences.append(box.score.value)
 
         best_threshold = 0
         best_difference = 100000

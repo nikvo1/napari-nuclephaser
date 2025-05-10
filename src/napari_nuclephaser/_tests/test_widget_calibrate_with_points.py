@@ -132,7 +132,7 @@ def test_calibrate_with_points_file_creation(
     )
     mock_pred = MagicMock()
     mock_pred.object_prediction_list = [
-        MagicMock(score=MagicMock(value=x)) for x in range(0.01, 1, 0.01)
+        MagicMock(score=MagicMock(value=x)) for x in np.arange(0.01, 1, 0.01)
     ]
     mocker.patch(
         "napari_nuclephaser._widget.get_sliced_prediction",
