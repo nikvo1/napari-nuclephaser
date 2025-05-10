@@ -762,7 +762,7 @@ def calibrate_with_dapi_image(
         best_difference = 100000
 
         for i in np.arange(0.01, 1, 0.01):
-            phase_count = int(sum(x > i[0] for x in detection_confidences))
+            phase_count = int(sum(x[0] > i for x in detection_confidences))
             difference = abs(phase_count - dapi_count)
             if difference < best_difference:
                 best_difference = difference
