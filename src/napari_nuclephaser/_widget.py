@@ -761,7 +761,7 @@ def calibrate_with_dapi_image(
         best_threshold = 0
         best_difference = 100000
 
-        if detection_confidences.size == 0:
+        if len(detection_confidences) == 0:
             continue
 
         for i in np.arange(0.01, 1, 0.01):
@@ -1059,7 +1059,7 @@ def calibrate_with_points(
         best_threshold = 0
         best_difference = 100000
 
-        if detection_confidences.size == 0:
+        if len(detection_confidences) == 0:
             continue
 
         for i in np.arange(0.01, 1, 0.01):
