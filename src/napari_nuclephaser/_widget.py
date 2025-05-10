@@ -738,7 +738,7 @@ def calibrate_with_dapi_image(
             verbose=0,
         )
 
-        dapi_count = len(dapi_result.object_prediction_list)
+        dapi_count = int(len(dapi_result.object_prediction_list))
 
         phase_result = get_sliced_prediction(
             phase,
@@ -762,7 +762,7 @@ def calibrate_with_dapi_image(
         best_difference = 100000
 
         for i in np.arange(0.01, 1, 0.01):
-            phase_count = sum(x > i for x in detection_confidences)
+            phase_count = int(sum(x > i for x in detection_confidences))
             difference = abs(phase_count - dapi_count)
             if difference < best_difference:
                 best_difference = difference
