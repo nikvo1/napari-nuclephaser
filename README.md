@@ -41,7 +41,39 @@ Learn more about calibration in [Documentation](https://napari-nuclephaser.readt
 
 # Models
 
-Currently only YOLOv5n, YOLOv5s, YOLOv11n and YOLOv11s models, as well as fluorescent nuclei detector YOLOv5n are available (downloaded automatically with _pip install napari-nuclephaser_). We are currently working on adding YOLOv5m-x and YOLOv11m-x models.
+Currently only YOLOv5n, YOLOv5s, YOLOv11n and YOLOv11s models, as well as fluorescent nuclei detector YOLOv5n are downloaded automatically with pip install napari-nuclephaser. To use larger models, download them with these links:
+
+<div align="center">
+
+Fluorescent nuclei detectors
+| Model                    | Link |
+| :----------------------: | :-----: |
+| Fluorescence_v5n         | [Donwload](https://zenodo.org/records/15388030/files/Fluorescence_v5n.pt?download=1) |
+| Fluorescence_v5s         | [Donwload](https://zenodo.org/records/15388030/files/Fluorescence_v5s.pt?download=1) |
+| Fluorescence_v5m         | [Donwload](https://zenodo.org/records/15388030/files/Fluorescence_v5m.pt?download=1) |
+| Fluorescence_v5l         | [Donwload](https://zenodo.org/records/15388030/files/Fluorescence_v5l.pt?download=1) |
+| Fluorescence_v5x         | [Donwload](https://zenodo.org/records/15388030/files/Fluorescence_v5x.pt?download=1) |
+| Fluorescence_v11n        | [Donwload](https://zenodo.org/records/15388030/files/Fluorescence_v11n.pt?download=1)|
+| Fluorescence_v11s        | [Donwload](https://zenodo.org/records/15388030/files/Fluorescence_v11s.pt?download=1)|
+| Fluorescence_v11m        | [Donwload](https://zenodo.org/records/15388030/files/Fluorescence_v11m.pt?download=1)|
+| Fluorescence_v11l        | [Donwload](https://zenodo.org/records/15388030/files/Fluorescence_v11l.pt?download=1)|
+| Fluorescence_v11x        | [Donwload](https://zenodo.org/records/15388030/files/Fluorescence_v11x.pt?download=1)|
+
+Brighfield nuclei detectors
+| Model                    | Link |
+| :----------------------: | :-----: |
+| Brightfield_v5n          | [Donwload](https://zenodo.org/records/15388030/files/Brightfield_v5n.pt?download=1)  |
+| Brightfield_v5s          | [Donwload](https://zenodo.org/records/15388030/files/Brightfield_v5s.pt?download=1)  |
+| Brightfield_v5m          | [Donwload](https://zenodo.org/records/15388030/files/Brightfield_v5m.pt?download=1)  |
+| Brightfield_v5l          | [Donwload](https://zenodo.org/records/15388030/files/Brightfield_v5l.pt?download=1)  |
+| Brightfield_v5x          | [Donwload](https://zenodo.org/records/15388030/files/Brightfield_v5x.pt?download=1)  |
+| Brightfield_v11n         | [Donwload](https://zenodo.org/records/15388030/files/Brightfield_v11n.pt?download=1) |
+| Brightfield_v11s         | [Donwload](https://zenodo.org/records/15388030/files/Brightfield_v11s.pt?download=1) |
+| Brightfield_v11m         | [Donwload](https://zenodo.org/records/15388030/files/Brightfield_v11m.pt?download=1) |
+| Brightfield_v11l         | [Donwload](https://zenodo.org/records/15388030/files/Brightfield_v11l.pt?download=1) |
+| Brightfield_v11x         | [Donwload](https://zenodo.org/records/15388030/files/Brightfield_v11x.pt?download=1) |
+
+</div>
 
 > [!NOTE]
 > Feel free to use the models published there without the plugin!
