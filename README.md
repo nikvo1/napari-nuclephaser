@@ -10,7 +10,7 @@
 
 A Napari plugin to detect and count nuclei on phase contrast images
 
-napari-nuclephaser utilizes [Ultralytics](https://docs.ultralytics.com/) YOLO object detection models and [obss/sahi](https://github.com/obss/sahi) sliced inference methods to detect cell nuclei on phase contrast (and other brightfield) images of any size, including large whole slide ones. Learn more with [Documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html).
+napari-nuclephaser utilizes [Ultralytics](https://docs.ultralytics.com/) YOLO object detection models and [obss/sahi](https://github.com/obss/sahi) sliced inference methods to detect cell nuclei on phase contrast (and other brightfield) images of any size, including large whole slide ones. Learn more with [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html).
 
 # Nuclei detection
 
@@ -54,9 +54,15 @@ We created several calibration (finding optimal confidence threshold) algorithms
 Apart from optimal confidence threshold search, these algorithms return accuracy metrics for specific use cases. Given that the calibration image is large, only part of it is used for search of threshold, while the second part is used for evaluation model's accuracy.
 Accuracy metrics are [Mean Absolute Percentage Error (MAPE)](https://en.wikipedia.org/wiki/Mean_absolute_percentage_error) and prediction-ground truth scatterplot, which shows how well model performs with different densities of cells.
 
-Learn more about calibration in [Documentation](https://napari-nuclephaser.readthedocs.io/en/latest/General%20information/Confidence%20threshold%20calibration.html).
+Learn more about calibration in [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/General%20information/Confidence%20threshold%20calibration.html).
 
-![Calibration methods](https://github.com/user-attachments/assets/a229a3c4-fbe3-4945-9139-84dfcc2758ad)
+<p align="center">
+  <picture>
+  <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/6d89e22b-2728-40fb-839d-3c6681e29c97>
+  <source media="(prefers-color-scheme: light)" srcset=https://github.com/user-attachments/assets/af53c3ac-0dd4-4a21-8305-aeac4d747839>
+  <img alt="Image didn't load">
+  </picture>
+</p>
 
 # Models
 
@@ -107,7 +113,7 @@ napari-nuclephaser plugin offers following widgets:
 - Widget for transforming Napari Points layer into Labels layer, which allows turning detection in tracking algorithms-digestible form (in particular, [btrack](https://github.com/quantumjot/btrack)).
 - Widget for counting number of points in Points layer.
 
-Learn more about widgets and their functionality at [Documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html).
+Learn more about widgets and their functionality at [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html).
 
 # Citation
 
