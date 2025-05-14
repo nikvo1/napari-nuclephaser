@@ -16,16 +16,35 @@ napari-nuclephaser utilizes [Ultralytics](https://docs.ultralytics.com/) YOLO ob
 
 We trained a series of [YOLOv5](https://github.com/ultralytics/yolov5) and [YOLOv11](https://github.com/ultralytics/ultralytics) models to detect nuclei on phase contrast images. It can be used for counting cells or for individual cell tracking (using nuclei detections as tracking marks). Prominent features of this approach are:
 - Napari-nuclephaser plugin includes [obss/sahi](https://github.com/obss/sahi) functionality, allowing detection on images of arbitrary sizes.
+  
+<p align="center">
+  <picture>
+  <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/829d8114-1997-4e28-8c31-e08bfc0c9558 height = "400">
+  <source media="(prefers-color-scheme: light)" srcset=https://github.com/user-attachments/assets/d6b7203f-22d2-45f4-8e11-4e2d1691659a height = "400">
+  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/829d8114-1997-4e28-8c31-e08bfc0c9558>
+  </picture>
+</p>
+
 - YOLO models are fast, providing reasonable inference speed even with CPU.
 - Ability to predict and automatically count nuclei on stacks of images, making it convenient for cell population growth studies and individual cell tracking.
 
-![Inference examples](https://github.com/user-attachments/assets/c7e4d0e6-44c1-4268-aae5-6bb78500d928)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/feba9a99-1d37-4962-a2e6-175052aa4925>
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/user-attachments/assets/c7e4d0e6-44c1-4268-aae5-6bb78500d928">
+  <img alt="Image didn't load" src="https://github.com/user-attachments/assets/cf4467ed-9182-4fcb-bd9d-65f853bd5f9b">
+</picture>
 
 # Calibration algorithm
 
 Result of object detection model inference is highly dependent on _confidence threshold_ parameter.
 
-![Confidence threshold](https://github.com/user-attachments/assets/888bfc2b-9e6d-4fe8-b0e3-115b0ca4a394)
+<p align="center">
+  <picture>
+  <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/8a13085f-c7ea-45f0-8931-6851f21b68a0 height = "300">
+  <source media="(prefers-color-scheme: light)" srcset=https://github.com/user-attachments/assets/0eb1f7a9-575c-4122-af23-cc8dfead128d height = "300">
+  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/c978b11d-611f-41ac-9e5d-f1b8f1649af3>
+  </picture>
+</p>
 
 We created several calibration (finding optimal confidence threshold) algorithms that allow adjusting models to specific use cases (cell types, magnifications, illumination settings, cameras etc.):
 - Calibration using known number of objects on an image. Doesn't produce accuracy metrics.
