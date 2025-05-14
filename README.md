@@ -10,22 +10,41 @@
 
 A Napari plugin to detect and count nuclei on phase contrast images
 
-napari-nuclephaser utilizes [Ultralytics](https://docs.ultralytics.com/) YOLO object detection models and [obss/sahi](https://github.com/obss/sahi) sliced inference methods to detect cell nuclei on phase contrast (and other brightfield) images of any size, including large whole slide ones. Learn more with [Documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html).
+napari-nuclephaser utilizes [Ultralytics](https://docs.ultralytics.com/) YOLO object detection models and [obss/sahi](https://github.com/obss/sahi) sliced inference methods to detect cell nuclei on phase contrast (and other brightfield) images of any size, including large whole slide ones. Learn more with [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html).
 
 # Nuclei detection
 
 We trained a series of [YOLOv5](https://github.com/ultralytics/yolov5) and [YOLOv11](https://github.com/ultralytics/ultralytics) models to detect nuclei on phase contrast images. It can be used for counting cells or for individual cell tracking (using nuclei detections as tracking marks). Prominent features of this approach are:
 - Napari-nuclephaser plugin includes [obss/sahi](https://github.com/obss/sahi) functionality, allowing detection on images of arbitrary sizes.
+
+<p align="center">
+  <picture>
+  <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/829d8114-1997-4e28-8c31-e08bfc0c9558 height = "400">
+  <source media="(prefers-color-scheme: light)" srcset=https://github.com/user-attachments/assets/d6b7203f-22d2-45f4-8e11-4e2d1691659a height = "400">
+  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/829d8114-1997-4e28-8c31-e08bfc0c9558>
+  </picture>
+</p>
+
 - YOLO models are fast, providing reasonable inference speed even with CPU.
 - Ability to predict and automatically count nuclei on stacks of images, making it convenient for cell population growth studies and individual cell tracking.
 
-![Inference examples](https://github.com/user-attachments/assets/c7e4d0e6-44c1-4268-aae5-6bb78500d928)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/feba9a99-1d37-4962-a2e6-175052aa4925>
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/user-attachments/assets/c7e4d0e6-44c1-4268-aae5-6bb78500d928">
+  <img alt="Image didn't load" src="https://github.com/user-attachments/assets/cf4467ed-9182-4fcb-bd9d-65f853bd5f9b">
+</picture>
 
 # Calibration algorithm
 
 Result of object detection model inference is highly dependent on _confidence threshold_ parameter.
 
-![Confidence threshold](https://github.com/user-attachments/assets/888bfc2b-9e6d-4fe8-b0e3-115b0ca4a394)
+<p align="center">
+  <picture>
+  <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/8a13085f-c7ea-45f0-8931-6851f21b68a0 height = "300">
+  <source media="(prefers-color-scheme: light)" srcset=https://github.com/user-attachments/assets/0eb1f7a9-575c-4122-af23-cc8dfead128d height = "300">
+  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/c978b11d-611f-41ac-9e5d-f1b8f1649af3>
+  </picture>
+</p>
 
 We created several calibration (finding optimal confidence threshold) algorithms that allow adjusting models to specific use cases (cell types, magnifications, illumination settings, cameras etc.):
 - Calibration using known number of objects on an image. Doesn't produce accuracy metrics.
@@ -35,13 +54,51 @@ We created several calibration (finding optimal confidence threshold) algorithms
 Apart from optimal confidence threshold search, these algorithms return accuracy metrics for specific use cases. Given that the calibration image is large, only part of it is used for search of threshold, while the second part is used for evaluation model's accuracy.
 Accuracy metrics are [Mean Absolute Percentage Error (MAPE)](https://en.wikipedia.org/wiki/Mean_absolute_percentage_error) and prediction-ground truth scatterplot, which shows how well model performs with different densities of cells.
 
-Learn more about calibration in [Documentation](https://napari-nuclephaser.readthedocs.io/en/latest/General%20information/Confidence%20threshold%20calibration.html).
+Learn more about calibration in [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/General%20information/Confidence%20threshold%20calibration.html).
 
-![Calibration methods](https://github.com/user-attachments/assets/a229a3c4-fbe3-4945-9139-84dfcc2758ad)
+<p align="center">
+  <picture>
+  <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/6d89e22b-2728-40fb-839d-3c6681e29c97>
+  <source media="(prefers-color-scheme: light)" srcset=https://github.com/user-attachments/assets/af53c3ac-0dd4-4a21-8305-aeac4d747839>
+  <img alt="Image didn't load">
+  </picture>
+</p>
 
 # Models
 
-Currently only YOLOv5n, YOLOv5s, YOLOv11n and YOLOv11s models, as well as fluorescent nuclei detector YOLOv5n are available (downloaded automatically with _pip install napari-nuclephaser_). We are currently working on adding YOLOv5m-x and YOLOv11m-x models.
+Currently only YOLOv5n, YOLOv5s, YOLOv11n and YOLOv11s models, as well as fluorescent nuclei detector YOLOv5n are downloaded automatically with pip install napari-nuclephaser. To use larger models, download them with these links:
+
+<div align="center">
+
+Fluorescent nuclei detectors
+| Model                    | Link |
+| :----------------------: | :-----: |
+| Fluorescence_v5n         | [Donwload](https://zenodo.org/records/15388030/files/Fluorescence_v5n.pt?download=1) |
+| Fluorescence_v5s         | [Donwload](https://zenodo.org/records/15388030/files/Fluorescence_v5s.pt?download=1) |
+| Fluorescence_v5m         | [Donwload](https://zenodo.org/records/15388030/files/Fluorescence_v5m.pt?download=1) |
+| Fluorescence_v5l         | [Donwload](https://zenodo.org/records/15388030/files/Fluorescence_v5l.pt?download=1) |
+| Fluorescence_v5x         | [Donwload](https://zenodo.org/records/15388030/files/Fluorescence_v5x.pt?download=1) |
+| Fluorescence_v11n        | [Donwload](https://zenodo.org/records/15388030/files/Fluorescence_v11n.pt?download=1)|
+| Fluorescence_v11s        | [Donwload](https://zenodo.org/records/15388030/files/Fluorescence_v11s.pt?download=1)|
+| Fluorescence_v11m        | [Donwload](https://zenodo.org/records/15388030/files/Fluorescence_v11m.pt?download=1)|
+| Fluorescence_v11l        | [Donwload](https://zenodo.org/records/15388030/files/Fluorescence_v11l.pt?download=1)|
+| Fluorescence_v11x        | [Donwload](https://zenodo.org/records/15388030/files/Fluorescence_v11x.pt?download=1)|
+
+Brighfield nuclei detectors
+| Model                    | Link |
+| :----------------------: | :-----: |
+| Brightfield_v5n          | [Donwload](https://zenodo.org/records/15388030/files/Brightfield_v5n.pt?download=1)  |
+| Brightfield_v5s          | [Donwload](https://zenodo.org/records/15388030/files/Brightfield_v5s.pt?download=1)  |
+| Brightfield_v5m          | [Donwload](https://zenodo.org/records/15388030/files/Brightfield_v5m.pt?download=1)  |
+| Brightfield_v5l          | [Donwload](https://zenodo.org/records/15388030/files/Brightfield_v5l.pt?download=1)  |
+| Brightfield_v5x          | [Donwload](https://zenodo.org/records/15388030/files/Brightfield_v5x.pt?download=1)  |
+| Brightfield_v11n         | [Donwload](https://zenodo.org/records/15388030/files/Brightfield_v11n.pt?download=1) |
+| Brightfield_v11s         | [Donwload](https://zenodo.org/records/15388030/files/Brightfield_v11s.pt?download=1) |
+| Brightfield_v11m         | [Donwload](https://zenodo.org/records/15388030/files/Brightfield_v11m.pt?download=1) |
+| Brightfield_v11l         | [Donwload](https://zenodo.org/records/15388030/files/Brightfield_v11l.pt?download=1) |
+| Brightfield_v11x         | [Donwload](https://zenodo.org/records/15388030/files/Brightfield_v11x.pt?download=1) |
+
+</div>
 
 > [!NOTE]
 > Feel free to use the models published there without the plugin!
@@ -56,7 +113,7 @@ napari-nuclephaser plugin offers following widgets:
 - Widget for transforming Napari Points layer into Labels layer, which allows turning detection in tracking algorithms-digestible form (in particular, [btrack](https://github.com/quantumjot/btrack)).
 - Widget for counting number of points in Points layer.
 
-Learn more about widgets and their functionality at [Documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html).
+Learn more about widgets and their functionality at [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html).
 
 # Citation
 
