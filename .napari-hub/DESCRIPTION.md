@@ -209,6 +209,8 @@ Distributed under the terms of the [MIT] license,
 
 If you encounter any problems, please [file an issue] along with a detailed description.
 
+(This is a Napari-specific description)
+
 [napari]: https://github.com/napari/napari
 [copier]: https://copier.readthedocs.io/en/stable/
 [@napari]: https://github.com/napari
