@@ -39,7 +39,7 @@ Result of object detection model inference is highly dependent on _confidence th
 <p align="center">
   <picture>
   <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/8a13085f-c7ea-45f0-8931-6851f21b68a0 height="300">
-  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/a5b0a3c6-02b0-4083-891d-373ea15a9674 height="300">
+  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/89f76cd7-2db7-4241-bc35-36d23332b2b5 height="300">
   </picture>
 </p>
 
@@ -56,7 +56,7 @@ Learn more about calibration in [documentation](https://napari-nuclephaser.readt
 <p align="center">
   <picture>
   <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/6d89e22b-2728-40fb-839d-3c6681e29c97>
-  <img alt="Image didn't load" srcset=https://github.com/user-attachments/assets/af53c3ac-0dd4-4a21-8305-aeac4d747839>
+  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/6a574845-4ad2-4802-b0f8-f1d908aa585a>
   </picture>
 </p>
 
