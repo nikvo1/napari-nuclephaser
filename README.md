@@ -19,9 +19,9 @@ We trained a series of [YOLOv5](https://github.com/ultralytics/yolov5) and [YOLO
   
 <p align="center">
   <picture>
-  <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/829d8114-1997-4e28-8c31-e08bfc0c9558 height = "400">
-  <source media="(prefers-color-scheme: light)" srcset=https://github.com/user-attachments/assets/d6b7203f-22d2-45f4-8e11-4e2d1691659a height = "400">
-  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/829d8114-1997-4e28-8c31-e08bfc0c9558>
+    <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/829d8114-1997-4e28-8c31-e08bfc0c9558 height = "400">
+    <source media="(prefers-color-scheme: light)" srcset=https://github.com/user-attachments/assets/d6b7203f-22d2-45f4-8e11-4e2d1691659a height = "400">
+    <img alt="Image didn't load" src=https://github.com/user-attachments/assets/829d8114-1997-4e28-8c31-e08bfc0c9558>
   </picture>
 </p>
 
