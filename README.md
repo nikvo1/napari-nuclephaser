@@ -10,7 +10,7 @@
 
 A Napari plugin to detect and count nuclei on phase contrast images
 
-napari-nuclephaser utilizes [Ultralytics](https://docs.ultralytics.com/) YOLO object detection models and [obss/sahi](https://github.com/obss/sahi) sliced inference methods to detect cell nuclei on phase contrast (and other brightfield) images of any size, including large whole slide ones. Learn more with [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html).
+napari-nuclephaser utilizes [Ultralytics](https://docs.ultralytics.com/) YOLO object detection models and [obss/sahi](https://github.com/obss/sahi) sliced inference methods to detect cell nuclei on phase contrast (and other brightfield) images of any size, including large whole slide ones. Learn more with [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html) and [paper](https://www.biorxiv.org/content/10.1101/2025.05.13.653705v1).
 
 # Nuclei detection
 
@@ -117,11 +117,17 @@ Learn more about widgets and their functionality at [documentation](https://napa
 
 # Citation
 
-We are currently working on a paper with full description of our approach and how we trained and tested our models.
-
-----------------------------------
-
-This [napari] plugin was generated with [copier] using the [napari-plugin-template].
+```bibtex
+@article {Voloshin2025.05.13.653705,
+	author = {Voloshin, Nikita and Putlyaev, Egor and Chechekhina, Elizaveta and Usachev, Vladimir and Karagyaur, Maxim and Bozov, Kirill and Grigorieva, Olga and Tyurin-Kuzmin, Pyotr and Kulebyakin, Konstantin},
+	title = {NuclePhaser: a YOLO-based framework for cell nuclei detection and counting in phase contrast images of arbitrary size with support of fast calibration and testing on specific use cases},
+	year = {2025},
+	doi = {10.1101/2025.05.13.653705},
+	URL = {https://www.biorxiv.org/content/early/2025/05/16/2025.05.13.653705},
+	eprint = {https://www.biorxiv.org/content/early/2025/05/16/2025.05.13.653705.full.pdf},
+	journal = {bioRxiv}
+}
+```
 
 <!--
 Don't miss the full getting started guide to set up your new package:
@@ -209,6 +215,8 @@ pip3 install torch torchvision torchaudio --index-url https://download.pytorch.o
 2. Search, download and install napari-nuclephaser plugin by opening the app, navigating to Plugins window and choosing Install/Uninstall plugins...
 
 ----------------------------------
+
+This [napari] plugin was generated with [copier] using the [napari-plugin-template].
 
 ## Contributing
 
