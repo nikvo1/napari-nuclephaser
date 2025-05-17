@@ -29,8 +29,7 @@ We trained a series of [YOLOv5](https://github.com/ultralytics/yolov5) and [YOLO
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/feba9a99-1d37-4962-a2e6-175052aa4925>
-  <source media="(prefers-color-scheme: light)" srcset="https://github.com/user-attachments/assets/c7e4d0e6-44c1-4268-aae5-6bb78500d928">
-  <img alt="Image didn't load" src="https://github.com/user-attachments/assets/feba9a99-1d37-4962-a2e6-175052aa4925">
+  <img alt="Image didn't load" src="https://github.com/user-attachments/assets/c7e4d0e6-44c1-4268-aae5-6bb78500d928">
 </picture>
 
 # Calibration algorithm
@@ -40,8 +39,7 @@ Result of object detection model inference is highly dependent on _confidence th
 <p align="center">
   <picture>
   <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/8a13085f-c7ea-45f0-8931-6851f21b68a0 height = "300">
-  <source media="(prefers-color-scheme: light)" srcset=https://github.com/user-attachments/assets/0eb1f7a9-575c-4122-af23-cc8dfead128d height = "300">
-  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/c978b11d-611f-41ac-9e5d-f1b8f1649af3>
+  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/0eb1f7a9-575c-4122-af23-cc8dfead128d height = "300">
   </picture>
 </p>
 
@@ -58,8 +56,7 @@ Learn more about calibration in [documentation](https://napari-nuclephaser.readt
 <p align="center">
   <picture>
   <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/6d89e22b-2728-40fb-839d-3c6681e29c97>
-  <source media="(prefers-color-scheme: light)" srcset=https://github.com/user-attachments/assets/af53c3ac-0dd4-4a21-8305-aeac4d747839>
-  <img alt="Image didn't load">
+  <img alt="Image didn't load" srcset=https://github.com/user-attachments/assets/af53c3ac-0dd4-4a21-8305-aeac4d747839>
   </picture>
 </p>
 
