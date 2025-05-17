@@ -17,13 +17,12 @@ napari-nuclephaser utilizes [Ultralytics](https://docs.ultralytics.com/) YOLO ob
 We trained a series of [YOLOv5](https://github.com/ultralytics/yolov5) and [YOLOv11](https://github.com/ultralytics/ultralytics) models to detect nuclei on phase contrast images. It can be used for counting cells or for individual cell tracking (using nuclei detections as tracking marks). Prominent features of this approach are:
 - Napari-nuclephaser plugin includes [obss/sahi](https://github.com/obss/sahi) functionality, allowing detection on images of arbitrary sizes.
   
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/829d8114-1997-4e28-8c31-e08bfc0c9558 height = "400">
-    <source media="(prefers-color-scheme: light)" srcset=https://github.com/user-attachments/assets/d6b7203f-22d2-45f4-8e11-4e2d1691659a height = "400">
-    <img alt="Image didn't load" src=https://github.com/user-attachments/assets/829d8114-1997-4e28-8c31-e08bfc0c9558>
-  </picture>
-</p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/829d8114-1997-4e28-8c31-e08bfc0c9558 height = "400">
+  <source media="(prefers-color-scheme: light)" srcset=https://github.com/user-attachments/assets/d6b7203f-22d2-45f4-8e11-4e2d1691659a height = "400">
+  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/829d8114-1997-4e28-8c31-e08bfc0c9558>
+</picture>
+
 
 - YOLO models are fast, providing reasonable inference speed even with CPU.
 - Ability to predict and automatically count nuclei on stacks of images, making it convenient for cell population growth studies and individual cell tracking.
