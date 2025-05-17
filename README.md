@@ -19,7 +19,8 @@ We trained a series of [YOLOv5](https://github.com/ultralytics/yolov5) and [YOLO
 
 <p align="center">
 	<picture>
-	  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/829d8114-1997-4e28-8c31-e08bfc0c9558>
+	  <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/aa321f17-b0e2-4161-8a69-cb732d7065a7 height=400>
+	  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/fe4d6436-3490-4c06-8ddd-7c797976f407 height=400>
 	</picture>
 </picture>
 
