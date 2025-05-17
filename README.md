@@ -31,7 +31,7 @@ We trained a series of [YOLOv5](https://github.com/ultralytics/yolov5) and [YOLO
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/feba9a99-1d37-4962-a2e6-175052aa4925>
   <source media="(prefers-color-scheme: light)" srcset="https://github.com/user-attachments/assets/c7e4d0e6-44c1-4268-aae5-6bb78500d928">
-  <img alt="Image didn't load" src="https://github.com/user-attachments/assets/cf4467ed-9182-4fcb-bd9d-65f853bd5f9b">
+  <img alt="Image didn't load" src="https://github.com/user-attachments/assets/feba9a99-1d37-4962-a2e6-175052aa4925">
 </picture>
 
 # Calibration algorithm
