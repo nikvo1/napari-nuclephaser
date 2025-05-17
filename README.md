@@ -38,8 +38,8 @@ Result of object detection model inference is highly dependent on _confidence th
 
 <p align="center">
   <picture>
-  <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/8a13085f-c7ea-45f0-8931-6851f21b68a0 height = "300">
-  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/0eb1f7a9-575c-4122-af23-cc8dfead128d height = "300">
+  <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/8a13085f-c7ea-45f0-8931-6851f21b68a0 height="300">
+  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/a5b0a3c6-02b0-4083-891d-373ea15a9674 height="300">
   </picture>
 </p>
 
