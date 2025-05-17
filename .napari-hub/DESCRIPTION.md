@@ -1,33 +1,43 @@
-<!-- This file is a placeholder for customizing description of your plugin 
-on the napari hub if you wish. The readme file will be used by default if
-you wish not to do any customization for the napari hub listing.
-
-If you need some help writing a good description, check out our 
-[guide](https://github.com/chanzuckerberg/napari-hub/wiki/Writing-the-Perfect-Description-for-your-Plugin)
--->
 # napari-nuclephaser
 
 A Napari plugin to detect and count nuclei on phase contrast images
 
 napari-nuclephaser utilizes [Ultralytics](https://docs.ultralytics.com/) YOLO object detection models and [obss/sahi](https://github.com/obss/sahi) sliced inference methods to detect cell nuclei on phase contrast (and other brightfield) images of any size, including large whole slide ones. Learn more with [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html).
 
+For more information, see our [GitHub page](https://github.com/nikvo1/napari-nuclephaser), [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html) and [paper](https://www.biorxiv.org/content/10.1101/2025.05.13.653705v1)
+
 # Nuclei detection
 
 We trained a series of [YOLOv5](https://github.com/ultralytics/yolov5) and [YOLOv11](https://github.com/ultralytics/ultralytics) models to detect nuclei on phase contrast images. It can be used for counting cells or for individual cell tracking (using nuclei detections as tracking marks). Prominent features of this approach are:
 - Napari-nuclephaser plugin includes [obss/sahi](https://github.com/obss/sahi) functionality, allowing detection on images of arbitrary sizes.
-  
-![Sliding window day cropped](https://github.com/user-attachments/assets/60aca59e-072f-4c17-802e-c42b58fd740c)
+
+<p align="center">
+  <picture>
+  <source srcset=https://github.com/user-attachments/assets/60aca59e-072f-4c17-802e-c42b58fd740c height = "400">
+  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/60aca59e-072f-4c17-802e-c42b58fd740c>
+  </picture>
+</p>
 
 - YOLO models are fast, providing reasonable inference speed even with CPU.
 - Ability to predict and automatically count nuclei on stacks of images, making it convenient for cell population growth studies and individual cell tracking.
 
-![Inference day](https://github.com/user-attachments/assets/ccf7ee11-9189-4ac6-bd93-c7bcd582f90e)
+<p align="center">
+  <picture>
+  <source srcset=https://github.com/user-attachments/assets/ccf7ee11-9189-4ac6-bd93-c7bcd582f90e height = "400">
+  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/ccf7ee11-9189-4ac6-bd93-c7bcd582f90e>
+  </picture>
+</p>
 
 # Calibration algorithm
 
 Result of object detection model inference is highly dependent on _confidence threshold_ parameter.
 
-![Thresholds low](https://github.com/user-attachments/assets/99f47f85-92df-4680-9e22-8c686fd9bdc0)
+<p align="center">
+  <picture>
+  <source srcset=https://github.com/user-attachments/assets/99f47f85-92df-4680-9e22-8c686fd9bdc0 height = "400">
+  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/99f47f85-92df-4680-9e22-8c686fd9bdc0>
+  </picture>
+</p>
 
 We created several calibration (finding optimal confidence threshold) algorithms that allow adjusting models to specific use cases (cell types, magnifications, illumination settings, cameras etc.):
 - Calibration using known number of objects on an image. Doesn't produce accuracy metrics.
@@ -39,7 +49,12 @@ Accuracy metrics are [Mean Absolute Percentage Error (MAPE)](https://en.wikipedi
 
 Learn more about calibration in [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/General%20information/Confidence%20threshold%20calibration.html).
 
-![Calibration day](https://github.com/user-attachments/assets/d52ee877-a66e-4db0-b1bc-23d938718a57)
+<p align="center">
+  <picture>
+  <source srcset=https://github.com/user-attachments/assets/d52ee877-a66e-4db0-b1bc-23d938718a57>
+  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/d52ee877-a66e-4db0-b1bc-23d938718a57>
+  </picture>
+</p>
 
 # Models
 
@@ -94,7 +109,18 @@ Learn more about widgets and their functionality at [documentation](https://napa
 
 # Citation
 
-We are currently working on a paper with full description of our approach and how we trained and tested our models.
+```bibtex
+@article {Voloshin2025.05.13.653705,
+	author = {Voloshin, Nikita and Putlyaev, Egor and Chechekhina, Elizaveta and Usachev, Vladimir and Karagyaur, Maxim and Bozov, Kirill and Grigorieva, Olga and Tyurin-Kuzmin, Pyotr and Kulebyakin, Konstantin},
+	title = {NuclePhaser: a YOLO-based framework for cell nuclei detection and counting in phase contrast images of arbitrary size with support of fast calibration and testing on specific use cases},
+	year = {2025},
+	doi = {10.1101/2025.05.13.653705},
+	URL = {https://www.biorxiv.org/content/early/2025/05/16/2025.05.13.653705},
+	eprint = {https://www.biorxiv.org/content/early/2025/05/16/2025.05.13.653705.full.pdf},
+	journal = {bioRxiv}
+}
+```
+
 
 ----------------------------------
 
