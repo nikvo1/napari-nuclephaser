@@ -29,7 +29,7 @@ contributions:
       python_name: napari_nuclephaser.calibrate_dapi:calibrate_with_dapi_image
     - id: napari-nuclephaser.calibrate_with_points
       title: Calibrate model and calculate accuracy using ground truth points layer
-      python_name: napari_nuclephaser._widget:calibrate_with_points
+      python_name: napari_nuclephaser.calibrate_points:calibrate_with_points
   widgets:
     - command: napari-nuclephaser.make_points
       display_name: Predict on single image
