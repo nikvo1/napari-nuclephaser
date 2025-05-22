@@ -14,14 +14,14 @@ def test_predict_on_stack_valid(make_napari_viewer, mocker, tmp_path):
 
     # Mock model initialization to return a mock model and model type
     mock_initialize = mocker.patch(
-        "napari_nuclephaser._widget.initialize_model"
+        "napari_nuclephaser.predict_one_stack.initialize_model"
     )
     mock_detection_model = MagicMock()
     mock_initialize.return_value = (mock_detection_model, "mock_model")
 
     # Mock get_sliced_prediction to return a result with two detections per frame
     mock_sliced_pred = mocker.patch(
-        "napari_nuclephaser._widget.get_sliced_prediction"
+        "napari_nuclephaser.predict_one_stack.get_sliced_prediction"
     )
     mock_result = MagicMock()
     mock_result.to_coco_predictions.return_value = [
@@ -31,8 +31,12 @@ def test_predict_on_stack_valid(make_napari_viewer, mocker, tmp_path):
     mock_sliced_pred.return_value = mock_result
 
     # Mock show functions to track calls
-    mock_show_info = mocker.patch("napari_nuclephaser._widget.show_info")
-    mock_show_error = mocker.patch("napari_nuclephaser._widget.show_error")
+    mock_show_info = mocker.patch(
+        "napari_nuclephaser.predict_one_stack.show_info"
+    )
+    mock_show_error = mocker.patch(
+        "napari_nuclephaser.predict_one_stack.show_error"
+    )
 
     # Instantiate the widget and call it with test parameters
     widget = predict_on_stack()
@@ -76,7 +80,9 @@ def test_predict_on_stack_invalid_input(make_napari_viewer, mocker):
     image_layer = viewer.add_image(invalid_image, name="invalid_image")
 
     # Mock show_error to verify it's called
-    mock_show_error = mocker.patch("napari_nuclephaser._widget.show_error")
+    mock_show_error = mocker.patch(
+        "napari_nuclephaser.predict_one_stack.show_error"
+    )
 
     # Instantiate and call the widget
     widget = predict_on_stack()
@@ -97,19 +103,19 @@ def test_predict_on_stack_saving_files(make_napari_viewer, mocker, tmp_path):
 
     # Mock model and empty predictions to simplify output
     mock_initialize = mocker.patch(
-        "napari_nuclephaser._widget.initialize_model"
+        "napari_nuclephaser.predict_one_stack.initialize_model"
     )
     mock_initialize.return_value = (MagicMock(), "mock_model")
     mock_sliced_pred = mocker.patch(
-        "napari_nuclephaser._widget.get_sliced_prediction"
+        "napari_nuclephaser.predict_one_stack.get_sliced_prediction"
     )
     mock_result = MagicMock()
     mock_result.to_coco_predictions.return_value = []
     mock_sliced_pred.return_value = mock_result
 
     # Mock show functions
-    mocker.patch("napari_nuclephaser._widget.show_info")
-    mocker.patch("napari_nuclephaser._widget.show_error")
+    mocker.patch("napari_nuclephaser.predict_one_stack.show_info")
+    mocker.patch("napari_nuclephaser.predict_one_stack.show_error")
 
     # Call widget with saving enabled
     widget = predict_on_stack()

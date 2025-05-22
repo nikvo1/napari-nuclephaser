@@ -17,12 +17,12 @@ def test_calibrate_with_known_number_happy_path(make_napari_viewer, mocker):
 
     # Mock model initialization and SAHI prediction
     mock_initialize = mocker.patch(
-        "napari_nuclephaser._widget.initialize_model"
+        "napari_nuclephaser.calibrate_known_number.initialize_model"
     )
     mock_initialize.return_value = (mocker.MagicMock(), "MockModel")
 
     mock_get_sliced = mocker.patch(
-        "napari_nuclephaser._widget.get_sliced_prediction"
+        "napari_nuclephaser.calibrate_known_number.get_sliced_prediction"
     )
     mock_result = mocker.MagicMock()
     # Mock three predictions with descending scores
@@ -60,7 +60,9 @@ def test_calibrate_with_image_stack_error(make_napari_viewer, mocker):
     image_layer = viewer.add_image(image_data)
 
     # Mock logger or error display if needed
-    mock_error = mocker.patch("napari_nuclephaser._widget.show_error")
+    mock_error = mocker.patch(
+        "napari_nuclephaser.calibrate_known_number.show_error"
+    )
 
     # Instantiate the widget
     widget = calibrate_with_known_number()
