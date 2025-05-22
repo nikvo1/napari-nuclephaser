@@ -4,7 +4,9 @@ matplotlib.use("Agg")  # Set backend before other imports
 
 import numpy as np
 
-from napari_nuclephaser._widget import calibrate_with_known_number
+from napari_nuclephaser.calibrate_known_number import (
+    calibrate_with_known_number,
+)
 
 
 def test_calibrate_with_known_number_happy_path(make_napari_viewer, mocker):

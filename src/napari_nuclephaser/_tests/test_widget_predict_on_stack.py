@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import numpy as np
 from napari.layers import Points
 
-from napari_nuclephaser._widget import predict_on_stack
+from napari_nuclephaser.predict_one_stack import predict_on_stack
 
 
 def test_predict_on_stack_valid(make_napari_viewer, mocker, tmp_path):

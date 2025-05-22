@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 
-from napari_nuclephaser._widget import calibrate_with_points
+from napari_nuclephaser.calibrate_points import calibrate_with_points
 
 
 def test_calibrate_with_points_happy_path(make_napari_viewer, mocker):

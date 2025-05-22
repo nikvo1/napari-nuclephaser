@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 
-from napari_nuclephaser._widget import calibrate_with_dapi_image
+from napari_nuclephaser.calibrate_dapi import calibrate_with_dapi_image
 
 
 def test_calibrate_happy_path(make_napari_viewer, mocker):
