@@ -8,7 +8,7 @@ contributions:
   commands:
     - id: napari-nuclephaser.make_points
       title: Mark cells with points
-      python_name: napari_nuclephaser._widget:make_points
+      python_name: napari_nuclephaser.predict_on_single:make_points
     - id: napari-nuclephaser.directorypicker
       title: Pick working directory
       python_name: napari_nuclephaser._widget:directorypicker
