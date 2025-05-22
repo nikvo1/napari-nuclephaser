@@ -17,7 +17,7 @@ contributions:
       python_name: napari_nuclephaser._widget:give_num_points
     - id: napari-nuclephaser.calibrate_with_known_number
       title: Find best threshold for model with known number of object on image
-      python_name: napari_nuclephaser._widget:calibrate_with_known_number
+      python_name: napari_nuclephaser.calibrate_known_number:calibrate_with_known_number
     - id: napari-nuclephaser.predict_on_stack
       title: Predict on stack of images
       python_name: napari_nuclephaser.predict_one_stack:predict_on_stack
