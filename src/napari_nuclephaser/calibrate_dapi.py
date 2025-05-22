@@ -10,7 +10,7 @@ import pandas as pd
 import seaborn as sns
 from magicgui import magic_factory
 from matplotlib import pyplot as plt
-from napari.layers import Image, Points
+from napari.layers import Image
 from napari.utils import progress
 from napari.utils.notifications import show_error
 from sahi.predict import get_sliced_prediction
@@ -36,6 +36,9 @@ model_type_list = ("yolov5", "ultralytics", "yolov8", "yolov11", "yolo11")
     Calibration_proportion={
         "tooltip": "Determines which part of the result stack of small images will be used for calibration. The rest will be used for test"
     },
+    Random_seed={
+        "tooltip": "Number used for random number generator, use the same random seeds for exact reproduction of results."
+    },
     Postprocess={
         "choices": ["GREEDYNMM", "NMS", "NMM"],
         "tooltip": "An algorithm to process overlapping detections. See obss/sahi library docs for more details.",
@@ -43,6 +46,9 @@ model_type_list = ("yolov5", "ultralytics", "yolov8", "yolov11", "yolo11")
     Match_metric={
         "choices": ["IOS", "IOU"],
         "tooltip": "A metric to determine when two detections are two different detections overlapping or is it a one detection. Sett obss/sahi library docs for more details",
+    },
+    DAPI_confidence_threshold={
+        "tooltip": "Parameter that determines how many detections will DAPI model return. Use calibration widgets to determine optimal threshold for your use case."
     },
     Save_folder={"mode": "d"},
     Sahi_size={
@@ -62,14 +68,16 @@ model_type_list = ("yolov5", "ultralytics", "yolov8", "yolov11", "yolo11")
     auto_call=False,
     result_widget=True,
 )
-def calibrate_with_points(
+def calibrate_with_dapi_image(
     Select_Phase_image: Image,
-    Select_points_layer: Points,
+    Select_DAPI_image: Image,
     viewer: napari.Viewer,
     Phase_model=first_model,
+    DAPI_model=first_model,
     Division_size=640,
     Calibration_proportion=0.1,
     Random_seed=42,
+    DAPI_confidence_threshold=0.5,
     Postprocess="GREEDYNMM",
     Match_metric="IOS",
     Intersection_threshold=0.3,
@@ -78,13 +86,12 @@ def calibrate_with_points(
     Save_folder=pathlib.Path(),
     Experiment_name="Experiment",
 ):
-    """Takes a single-frame phase-contrast image (or other microscopy methods), corresponding Napari.Points layer with labeled nuclei,
-    path to YOLO model to calibrate (Phase_model), SAHI options
+    """Takes a single-frame phase-contrast image (or other microscopy methods), corresponding fluorescent nuclei image (DAPI, for example),
+    path to YOLO model to calibrate (Phase_model), path to YOLO model that detects nuclei on fluorescent images (DAPI_model), SAHI options
     -> splits images into small chunks with Division_size size, then splits result stack into calibration and test subsets with given proportion (Calibration_proportion),
-    then finds a Confidence threshold for Phase model that returns closest number of detected objects to number of points on according Points layer. Finds a best threshold for each image in calibration subset and averages them.
-    Then initializes Phase model with calibrated confidence threshold and runs it on test subset against Points layer to evaluate accuracy.
+    then finds a Confidence threshold for Phase model that returns closest number of detected objects to one given by DAPI model. Finds a best threshold for each image in calibration subset and averages them.
+    Then initializes Phase model with calibrated confidence threshold and runs it on test subset against DAPI model to evaluate accuracy.
     -> returns best threshold for Phase model, saves error scatterplot.png and metadata.txt files at given folder and subfolder name; creates new subfolder if given already exists
-    Can be used to calibrate model on images labeled by human or on images with machine predictions checked and corrected by human
     """
     phase_pic = Select_Phase_image.data
     if len(phase_pic.shape) > 3 or (
@@ -93,80 +100,92 @@ def calibrate_with_points(
         show_error(
             "Phase image is not a single frame! Can't calibrate on a stack of images"
         )
-        print(
-            "Phase image is not a single frame! Can't calibrate on a stack of images"
-        )
         return None
-    if len(phase_pic.shape) == 2:
-        phase_pic = cv2.cvtColor(phase_pic, cv2.COLOR_GRAY2RGB)
+    if len(phase_pic.shape) == 3:
+        phase_pic = cv2.cvtColor(phase_pic, cv2.COLOR_RGB2GRAY)
     if phase_pic.dtype == np.uint16:
         phase_pic = cv2.convertScaleAbs(phase_pic, alpha=255 / 65535)
         phase_pic = phase_pic.astype(np.uint8)
+    image_shape = phase_pic.shape
 
-    points = Select_points_layer.data
-
-    print(len(points))
-    if len(points) == 0:
-        show_error("Points layer is empty! Can't proceed further")
-        print("Points layer is empty! Can't proceed further")
+    dapi_pic = Select_DAPI_image.data
+    if len(dapi_pic.shape) > 3 or (
+        len(dapi_pic.shape) == 3 and dapi_pic.shape[-1] not in (1, 3, 4)
+    ):  # Check whether image is single-frame, otherwise return error and stop the function
+        show_error(
+            "DAPI image is not a single frame! Can't calibrate on a stack of images"
+        )
         return None
+    if len(dapi_pic.shape) == 3:
+        dapi_pic = cv2.cvtColor(dapi_pic, cv2.COLOR_RGB2GRAY)
+    if dapi_pic.dtype == np.uint16:
+        dapi_pic = cv2.convertScaleAbs(dapi_pic, alpha=255 / 65535)
+        dapi_pic = dapi_pic.astype(np.uint8)
 
-    def split_image_and_points(image, points, window_size):
-        height, width, _ = image.shape
-        num_tiles_height = height // window_size
-        num_tiles_width = width // window_size
-        cropped_images = []
-        points_per_tile = []
+    if phase_pic.shape != dapi_pic.shape:
+        show_error(
+            f"Phase and DAPI images have different dimensions! Phase image is {phase_pic.shape} and DAPI is {dapi_pic.shape}"
+        )
+        print(
+            f"Phase and DAPI images have different dimensions! Phase image is {phase_pic.shape} and DAPI is {dapi_pic.shape}"
+        )
+        return None
+    merged = np.zeros((2, image_shape[0], image_shape[1]), dtype=np.uint8)
 
-        for i in range(num_tiles_height):
-            for j in range(num_tiles_width):
-                # Calculate the current tile's boundaries
-                left = j * window_size
-                upper = i * window_size
-                right = left + window_size
-                lower = upper + window_size
+    merged[0, :, :] = phase_pic
+    merged[1, :, :] = dapi_pic
 
-                # Crop the image
-                cropped = image[upper:lower, left:right, :]
-                cropped_images.append(cropped)
+    def split_image(image, size):
+        # Function that splits images into stack of small images with given size
+        _, height, width = image.shape
+        new_width = size
+        new_height = size
+        width_factor = width // new_width
+        height_factor = height // new_height
+        images = []
 
-                # Determine which points fall into this tile
-                tile_points = []
-                for point in points:
-                    y, x = point[0], point[1]
-                    if left <= x < right and upper <= y < lower:
-                        # Adjust coordinates relative to the tile
-                        adjusted_x = x - left
-                        adjusted_y = y - upper
-                        tile_points.append([adjusted_x, adjusted_y])
-                points_per_tile.append(len(tile_points))
+        for i in range(height_factor):
+            for j in range(width_factor):
+                left = j * new_width
+                upper = i * new_height
+                right = left + new_width
+                lower = upper + new_height
+                cropped_image = image[:, upper:lower, left:right]
+                images.append(cropped_image)
 
-        return np.array(cropped_images), np.array(points_per_tile)
+        return np.array(images)
 
-    stack, points = split_image_and_points(phase_pic, points, Division_size)
+    stack = split_image(merged, Division_size)
 
     n = int(len(stack) * Calibration_proportion)
 
     # Randomly select the indices for the first part
     np.random.seed(Random_seed)
-    indices = np.random.choice(len(stack), n, replace=False)  # ADD random seed
+    indices = np.random.choice(len(stack), n, replace=False)
 
     # Split the array into two parts
     calibration_part = stack[indices]
-    calibration_points = points[indices]
     test_part = np.delete(stack, indices, axis=0)
-    test_points = np.delete(points, indices, axis=0)
     print(
         f"Images initialized successfully! With {Division_size} window size image is split into {len(stack)} small ones"
     )
 
-    print("Initializing model...")
-    phase_model, model_type = initialize_model(
+    print("Initializing DAPI model...")
+    dapi_model, dapi_model_type = initialize_model(
+        rf"{DAPI_model}", DAPI_confidence_threshold, cuda_available
+    )
+    print(
+        f"DAPI model is initialized! Model type is {dapi_model_type}. Running on {cuda_available}"
+    )
+
+    print("Initializing Phase model...")
+    phase_model, phase_model_type = initialize_model(
         rf"{Phase_model}", 0.01, cuda_available
     )
     print(
-        f"Model is initialized! Model type is {model_type}. Running on {cuda_available}"
+        f"Model is initialized! Model type is {phase_model_type}. Running on {cuda_available}"
     )
+    print("Phase model is initialized!")
 
     print(f"Running calibration on {len(calibration_part)} images...")
     thresholds = []
@@ -174,14 +193,27 @@ def calibrate_with_points(
     for i in progress(
         range(len(calibration_part)), desc="Running calibration"
     ):
-
         image = calibration_part[i]
-        points = calibration_points[i]
+        phase = cv2.cvtColor(image[0], cv2.COLOR_GRAY2RGB)
+        dapi = cv2.cvtColor(image[1], cv2.COLOR_GRAY2RGB)
 
-        ground_truth = points
+        dapi_result = get_sliced_prediction(
+            dapi,
+            dapi_model,
+            slice_height=Sahi_size,
+            slice_width=Sahi_size,
+            overlap_height_ratio=Sahi_overlap,
+            overlap_width_ratio=Sahi_overlap,
+            postprocess_type=Postprocess,
+            postprocess_match_metric=Match_metric,
+            postprocess_match_threshold=Intersection_threshold,
+            verbose=0,
+        )
+
+        dapi_count = int(len(dapi_result.object_prediction_list))
 
         phase_result = get_sliced_prediction(
-            image,
+            phase,
             phase_model,
             slice_height=Sahi_size,
             slice_width=Sahi_size,
@@ -195,8 +227,9 @@ def calibrate_with_points(
 
         detection_confidences = []
 
-        for box in phase_result.object_prediction_list:
-            detection_confidences.append(box.score.value)
+        if len(phase_result.object_prediction_list) > 0:
+            for box in phase_result.object_prediction_list:
+                detection_confidences.append(box.score.value)
 
         best_threshold = 0
         best_difference = 100000
@@ -205,8 +238,8 @@ def calibrate_with_points(
             continue
 
         for i in np.arange(0.01, 1, 0.01):
-            phase_count = sum(x > i for x in detection_confidences)
-            difference = abs(phase_count - ground_truth)
+            phase_count = int(sum(1 for x in detection_confidences if x > i))
+            difference = abs(phase_count - dapi_count)
             if difference < best_difference:
                 best_difference = difference
                 best_threshold = round(i, 2)
@@ -215,7 +248,6 @@ def calibrate_with_points(
     if len(thresholds) == 0:
         print("Couldn't calibrate! Model didn't detect any objects")
         show_error("Couldn't calibrate! Model didn't detect any objects")
-        return None
 
     best_threshold = np.array(thresholds).mean()
     print(
@@ -227,27 +259,40 @@ def calibrate_with_points(
         print(f"Best threshold for {Phase_model} is {best_threshold:.3f}")
         return None
 
-    test_results = {"Predicted_count": [], "Ground_truth_count": []}
-
     print("Running test. Initializing calibrated model for testing...")
-    calibrated_model, model_type = initialize_model(
+    test_results = {"Predicted_count": [], "DAPI_count": []}
+    calibrated_model, calibrated_model_type = initialize_model(
         rf"{Phase_model}", best_threshold, cuda_available
     )
     print(
-        f"Model is initialized! Model type is {model_type}. Running on {cuda_available}"
+        f"Model is initialized! Model type is {calibrated_model_type}. Running on {cuda_available}"
     )
+    print("Calibrated model is initialized!")
 
     print(f"Running test on {len(test_part)} images...")
-    for i in progress(range(len(test_part)), desc="Running calibration"):
-
+    for i in progress(range(len(test_part)), desc="Running test"):
         image = test_part[i]
-        points = test_points[i]
+        phase = cv2.cvtColor(image[0], cv2.COLOR_GRAY2RGB)
+        dapi = cv2.cvtColor(image[1], cv2.COLOR_GRAY2RGB)
 
-        ground_truth = points
-        test_results["Ground_truth_count"].append(ground_truth)
+        dapi_result = get_sliced_prediction(
+            dapi,
+            dapi_model,
+            slice_height=Sahi_size,
+            slice_width=Sahi_size,
+            overlap_height_ratio=Sahi_overlap,
+            overlap_width_ratio=Sahi_overlap,
+            postprocess_type=Postprocess,
+            postprocess_match_metric=Match_metric,
+            postprocess_match_threshold=Intersection_threshold,
+            verbose=0,
+        )
+
+        dapi_count = len(dapi_result.object_prediction_list)
+        test_results["DAPI_count"].append(dapi_count)
 
         phase_result = get_sliced_prediction(
-            image,
+            phase,
             calibrated_model,
             slice_height=Sahi_size,
             slice_width=Sahi_size,
@@ -261,59 +306,43 @@ def calibrate_with_points(
 
         phase_count = len(phase_result.object_prediction_list)
         test_results["Predicted_count"].append(phase_count)
+    print("Test is complete!")
     viewer.window._status_bar._toggle_activity_dock(False)
     test_ds = pd.DataFrame.from_dict(test_results)
 
     test_ds["Error"] = (
-        test_ds["Ground_truth_count"] - test_ds["Predicted_count"]
-    ) / test_ds["Ground_truth_count"]
+        test_ds["DAPI_count"] - test_ds["Predicted_count"]
+    ) / test_ds["DAPI_count"]
     MAPE = test_ds["Error"].abs().mean() * 100
-    print(f"Test is complete! MAPE for this model is {MAPE:.2f}%")
-
-    def generate_plot_name(filename):
-        # Split the filename into name and extension
-        name, extension = os.path.splitext(filename)
-
-        # Initialize a counter for the filename
-        counter = 1
-
-        # Check if the file exists and modify the filename if necessary
-        while os.path.exists(filename):
-            filename = f"{name}{counter}{extension}"
-            counter += 1
-
-        return filename
+    print(f"MAPE for this model is {MAPE:.2f}%")
 
     print("Drawing error plot...")
     sns.set(rc={"figure.dpi": 150, "savefig.dpi": 150})
     fig, ax = plt.subplots()
     sns.scatterplot(
-        data=test_ds, x="Ground_truth_count", y="Predicted_count"
+        data=test_ds, x="DAPI_count", y="Predicted_count"
     ).set_title(
         f"{Phase_model} \n {best_threshold:.3f} threshold on {Select_Phase_image}. MAPE is {MAPE:.2f}%"
     )
-    sns.lineplot(
-        np.arange(0, test_ds["Ground_truth_count"].max(), 1), color="r"
-    )
+    sns.lineplot(np.arange(0, test_ds["DAPI_count"].max(), 1), color="r")
     subfolder = create_unique_subfolder(str(Save_folder), str(Experiment_name))
     file_name = os.path.join(subfolder, "Calibration error plot.png")
     fig.savefig(file_name)
     plt.close(fig)
     print(f"Error plot is saved at {subfolder}")
 
-    print("Saving points...")
-    Select_points_layer.save(os.path.join(subfolder, "reference points.csv"))
-    print("Points used for calibration are saved!")
-
     print("Creating metadata file...")
     current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
     metadata = f"""Experiment time: {current_date}
-    Calibration method: from points
+    Calibration method: from DAPI image
     Phase image: {Select_Phase_image}, {phase_pic.shape} pixels
-    Phase model: {Phase_model}, {model_type}
+    DAPI image: {Select_DAPI_image}, {dapi_pic.shape} pixels
+    Phase model: {Phase_model}, {phase_model_type}
+    DAPI model: {DAPI_model}, {dapi_model_type}
     Division size: {Division_size}, resulting in {len(stack)} small images
     Calibration proportion: {Calibration_proportion}, resulting in {len(calibration_part)} images for calibration and {len(test_part)} for testing.
     Random seed: {Random_seed}. Use this for exact reproduction of data
+    DAPI confidence threshold: {DAPI_confidence_threshold}
     Postprocess algorithm: {Postprocess}
     Match metric: {Match_metric}
     Intersection threshold: {Intersection_threshold}
@@ -325,63 +354,5 @@ def calibrate_with_points(
     with open(metadata_path, "w") as f:
         f.write(metadata)
     print("Metadata file is saved!")
+
     return f"Best threshold for {Phase_model} is {best_threshold:.3f} with MAPE {MAPE:.2f}%"
-
-
-@magic_factory(
-    auto_call=False,
-    call_button="Convert",
-    result_widget=False,
-    Points_layer={"label": "Select points layer"},
-    Reference_image={"label": "Select reference image"},
-)
-def convert_points_to_labels(
-    Points_layer: Points,
-    Reference_image: Image,
-    viewer: napari.Viewer,
-    Label_size=10,
-):
-    """Takes a Napari.Points layer (stacks are allowed) and reference image and returns points in Napari.Labels format.
-    Main purpose is tracking with napari.btrack plugin (which accepts only Labels) or other plugins
-    """
-    points = Points_layer.data
-    zeros = np.zeros(
-        shape=(
-            Reference_image.data.shape
-            if len(Reference_image.data.shape) == 3
-            else Reference_image.data.shape[:3]
-        ),
-        dtype=np.uint8,
-    )
-    for point in points:
-        cv2.circle(
-            zeros[int(point[0])],
-            (int(point[2]), int(point[1])),
-            Label_size,
-            256,
-            -1,
-        )
-    viewer.add_labels(
-        zeros.astype(np.uint8),
-        name=Points_layer.name + " labels",
-        depiction="plane",
-    )
-
-
-@magic_factory(
-    auto_call=False,
-    call_button="Count Up",
-    result_widget=True,
-    Points_layer={"label": "Select points layer"},
-)
-def give_num_points(Points_layer: Points):
-    # Count up the points from the label layer
-    points = Points_layer
-    return len(points.data)
-
-
-#
-# napari.Viewer()
-# calculate_av_size()
-viewer = napari.viewer.current_viewer()
-# napari.run()
