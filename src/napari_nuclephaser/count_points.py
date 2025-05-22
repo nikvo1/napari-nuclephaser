@@ -1,7 +1,6 @@
 import pathlib
 
 import matplotlib
-import napari
 from magicgui import magic_factory
 from napari.layers import Points
 from torch import cuda
@@ -26,10 +25,3 @@ def give_num_points(Points_layer: Points):
     # Count up the points from the label layer
     points = Points_layer
     return len(points.data)
-
-
-#
-# napari.Viewer()
-# calculate_av_size()
-viewer = napari.viewer.current_viewer()
-# napari.run()
