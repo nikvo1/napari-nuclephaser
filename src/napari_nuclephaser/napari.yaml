@@ -23,7 +23,7 @@ contributions:
       python_name: napari_nuclephaser.predict_one_stack:predict_on_stack
     - id: napari-nuclephaser.convert_points_to_labels
       title: Convert detection on stack from points to labels for tracking
-      python_name: napari_nuclephaser._widget:convert_points_to_labels
+      python_name: napari_nuclephaser.convert_points_to_labels:convert_points_to_labels
     - id: napari-nuclephaser.calibrate_with_dapi_image
       title: Calibrate model and calculate accuracy using Phase-DAPI image pair
       python_name: napari_nuclephaser.calibrate_dapi:calibrate_with_dapi_image
