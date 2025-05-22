@@ -20,7 +20,7 @@ contributions:
       python_name: napari_nuclephaser._widget:calibrate_with_known_number
     - id: napari-nuclephaser.predict_on_stack
       title: Predict on stack of images
-      python_name: napari_nuclephaser._widget:predict_on_stack
+      python_name: napari_nuclephaser.predict_one_stack:predict_on_stack
     - id: napari-nuclephaser.convert_points_to_labels
       title: Convert detection on stack from points to labels for tracking
       python_name: napari_nuclephaser._widget:convert_points_to_labels
