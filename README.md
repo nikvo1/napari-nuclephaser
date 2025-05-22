@@ -10,7 +10,7 @@
 
 A Napari plugin to detect and count nuclei on phase contrast images
 
-napari-nuclephaser utilizes [Ultralytics](https://docs.ultralytics.com/) YOLO object detection models and [obss/sahi](https://github.com/obss/sahi) sliced inference methods to detect cell nuclei on phase contrast (and other brightfield) images of any size, including large whole slide ones. Learn more with [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html).
+napari-nuclephaser utilizes [Ultralytics](https://docs.ultralytics.com/) YOLO object detection models and [obss/sahi](https://github.com/obss/sahi) sliced inference methods to detect cell nuclei on phase contrast (and other brightfield) images of any size, including large whole slide ones. Learn more with [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html) and [paper](https://www.biorxiv.org/content/10.1101/2025.05.13.653705v1).
 
 # Nuclei detection
 
@@ -18,20 +18,18 @@ We trained a series of [YOLOv5](https://github.com/ultralytics/yolov5) and [YOLO
 - Napari-nuclephaser plugin includes [obss/sahi](https://github.com/obss/sahi) functionality, allowing detection on images of arbitrary sizes.
 
 <p align="center">
-  <picture>
-  <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/829d8114-1997-4e28-8c31-e08bfc0c9558 height = "400">
-  <source media="(prefers-color-scheme: light)" srcset=https://github.com/user-attachments/assets/d6b7203f-22d2-45f4-8e11-4e2d1691659a height = "400">
-  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/829d8114-1997-4e28-8c31-e08bfc0c9558>
-  </picture>
-</p>
+	<picture>
+	  <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/aa321f17-b0e2-4161-8a69-cb732d7065a7 height=400>
+	  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/fe4d6436-3490-4c06-8ddd-7c797976f407 height=400>
+	</picture>
+</picture>
 
 - YOLO models are fast, providing reasonable inference speed even with CPU.
 - Ability to predict and automatically count nuclei on stacks of images, making it convenient for cell population growth studies and individual cell tracking.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/feba9a99-1d37-4962-a2e6-175052aa4925>
-  <source media="(prefers-color-scheme: light)" srcset="https://github.com/user-attachments/assets/c7e4d0e6-44c1-4268-aae5-6bb78500d928">
-  <img alt="Image didn't load" src="https://github.com/user-attachments/assets/cf4467ed-9182-4fcb-bd9d-65f853bd5f9b">
+  <img alt="Image didn't load" src="https://github.com/user-attachments/assets/c7e4d0e6-44c1-4268-aae5-6bb78500d928">
 </picture>
 
 # Calibration algorithm
@@ -40,9 +38,8 @@ Result of object detection model inference is highly dependent on _confidence th
 
 <p align="center">
   <picture>
-  <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/8a13085f-c7ea-45f0-8931-6851f21b68a0 height = "300">
-  <source media="(prefers-color-scheme: light)" srcset=https://github.com/user-attachments/assets/0eb1f7a9-575c-4122-af23-cc8dfead128d height = "300">
-  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/c978b11d-611f-41ac-9e5d-f1b8f1649af3>
+  <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/8a13085f-c7ea-45f0-8931-6851f21b68a0 height="300">
+  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/89f76cd7-2db7-4241-bc35-36d23332b2b5 height="300">
   </picture>
 </p>
 
@@ -59,8 +56,7 @@ Learn more about calibration in [documentation](https://napari-nuclephaser.readt
 <p align="center">
   <picture>
   <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/6d89e22b-2728-40fb-839d-3c6681e29c97>
-  <source media="(prefers-color-scheme: light)" srcset=https://github.com/user-attachments/assets/af53c3ac-0dd4-4a21-8305-aeac4d747839>
-  <img alt="Image didn't load">
+  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/6a574845-4ad2-4802-b0f8-f1d908aa585a>
   </picture>
 </p>
 
@@ -101,7 +97,7 @@ Brighfield nuclei detectors
 </div>
 
 > [!NOTE]
-> Feel free to use the models published there without the plugin!
+> Feel free to use the models published here without the plugin!
 
 # Plugin functionality
 napari-nuclephaser plugin offers following widgets:
@@ -117,11 +113,17 @@ Learn more about widgets and their functionality at [documentation](https://napa
 
 # Citation
 
-We are currently working on a paper with full description of our approach and how we trained and tested our models.
-
-----------------------------------
-
-This [napari] plugin was generated with [copier] using the [napari-plugin-template].
+```bibtex
+@article {Voloshin2025.05.13.653705,
+	author = {Voloshin, Nikita and Putlyaev, Egor and Chechekhina, Elizaveta and Usachev, Vladimir and Karagyaur, Maxim and Bozov, Kirill and Grigorieva, Olga and Tyurin-Kuzmin, Pyotr and Kulebyakin, Konstantin},
+	title = {NuclePhaser: a YOLO-based framework for cell nuclei detection and counting in phase contrast images of arbitrary size with support of fast calibration and testing on specific use cases},
+	year = {2025},
+	doi = {10.1101/2025.05.13.653705},
+	URL = {https://www.biorxiv.org/content/early/2025/05/16/2025.05.13.653705},
+	eprint = {https://www.biorxiv.org/content/early/2025/05/16/2025.05.13.653705.full.pdf},
+	journal = {bioRxiv}
+}
+```
 
 <!--
 Don't miss the full getting started guide to set up your new package:
@@ -202,13 +204,15 @@ pip3 install torch torchvision torchaudio --index-url https://download.pytorch.o
 
 ----------------------------------
 
-### Option 2: Using standalone napari app (simpler)
+## Option 2: Using standalone napari app (simpler)
 
 1. Download and install napari as standalone app using [installation instructions](https://napari.org/dev/tutorials/fundamentals/installation_bundle_conda.html)
 
 2. Search, download and install napari-nuclephaser plugin by opening the app, navigating to Plugins window and choosing Install/Uninstall plugins...
 
 ----------------------------------
+
+This [napari] plugin was generated with [copier] using the [napari-plugin-template].
 
 ## Contributing
 

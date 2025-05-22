@@ -96,4 +96,4 @@ For more information, see :doc:`Calibrate with DAPI widget page </Widgets/Calibr
 
 Two metrics are generated during tests: `MAPE <https://en.wikipedia.org/wiki/Mean_absolute_percentage_error>`_ and prediction-ground truth scatterplot.
 The smaller the MAPE, the better. The closer predictions to the red line on scatterplot, the better.
-For more detailed information about the metrics, see our paper (coming soon).
+For more detailed information about the metrics, see our `paper <https://www.biorxiv.org/content/10.1101/2025.05.13.653705v1>`_.
