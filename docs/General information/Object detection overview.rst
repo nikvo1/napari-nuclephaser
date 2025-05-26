@@ -44,3 +44,5 @@ NuclePhaser project utilizes `YOLOv5 <https://github.com/ultralytics/yolov5>`_ a
 YOLO (You Only Look Once) algorithms are designed to be **fast**, so they even work with acceptable speed on CPU.
 They come in a variety of sizes (n - nano, s - small, m - medium, l - large, x - extra large), with smallest model being the fastest but least accurate
 (in our project, size doesn't always correlate with accuracy).
+Currently only small models (n and s) are downloaded automatically due to the limited size of package on PyPI.
+Larger models can be downloaded on `NuclePhaser GitHub page <https://github.com/nikvo1/napari-nuclephaser>`_

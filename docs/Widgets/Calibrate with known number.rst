@@ -34,6 +34,8 @@ Widget will return the confidence threshold of the YOLO model that will return a
 
 .. Tip:: You can use uncalibrated model with **Predict on single image widget**, manually correct the result with Napari set of tools and use **Count points on single image** widget to manually count the number of objects on an image.
 
+Further parameters are **advanced settings**. Consider changing them only if you have troubles with default ones.
+
 **Postprocess** field is a part of sliced inference parameters.
 It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
 

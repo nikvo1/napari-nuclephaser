@@ -64,19 +64,20 @@ model_type_list = ("yolov5", "ultralytics", "yolov8", "yolov11", "yolo11")
 )
 def calibrate_with_points(
     Select_Phase_image: Image,
-    Select_points_layer: Points,
+    Select_Points_layer: Points,
     viewer: napari.Viewer,
     Phase_model=first_model,
     Division_size=640,
     Calibration_proportion=0.1,
+    Save_folder=pathlib.Path(),
+    Experiment_name="Experiment",
+    ADVANCED_SETTINGS="",
     Random_seed=42,
     Postprocess="GREEDYNMM",
     Match_metric="IOS",
     Intersection_threshold=0.3,
     Sahi_size=640,
     Sahi_overlap: float = 0.2,
-    Save_folder=pathlib.Path(),
-    Experiment_name="Experiment",
 ):
     """Takes a single-frame phase-contrast image (or other microscopy methods), corresponding Napari.Points layer with labeled nuclei,
     path to YOLO model to calibrate (Phase_model), SAHI options
@@ -103,7 +104,7 @@ def calibrate_with_points(
         phase_pic = cv2.convertScaleAbs(phase_pic, alpha=255 / 65535)
         phase_pic = phase_pic.astype(np.uint8)
 
-    points = Select_points_layer.data
+    points = Select_Points_layer.data
 
     print(len(points))
     if len(points) == 0:
@@ -302,7 +303,7 @@ def calibrate_with_points(
     print(f"Error plot is saved at {subfolder}")
 
     print("Saving points...")
-    Select_points_layer.save(os.path.join(subfolder, "reference points.csv"))
+    Select_Points_layer.save(os.path.join(subfolder, "reference points.csv"))
     print("Points used for calibration are saved!")
 
     print("Creating metadata file...")

@@ -52,6 +52,7 @@ def calibrate_with_known_number(
     viewer: napari.Viewer,
     Select_model=first_model,
     Calibration_number=100,
+    ADVANCED_SETTINGS="",
     Postprocess="GREEDYNMM",
     Match_metric="IOS",
     Intersection_threshold=0.3,
