@@ -30,11 +30,16 @@ contributions:
     - id: napari-nuclephaser.calibrate_with_points
       title: Calibrate model and calculate accuracy using ground truth points layer
       python_name: napari_nuclephaser.calibrate_points:calibrate_with_points
+    - id: napari-nuclephaser.predict_on_two_stack
+      title: Predict on 2-dimensional stack of images
+      python_name: napari_nuclephaser.predict_two_stack:predict_on_two_stack
   widgets:
     - command: napari-nuclephaser.make_points
       display_name: Predict on single image
     - command: napari-nuclephaser.predict_on_stack
       display_name: Predict on 1-stack
+    - command: napari-nuclephaser.predict_on_two_stack
+      display_name: Predict on 2-stack
     - command: napari-nuclephaser.calibrate_with_known_number
       display_name: Calibrate with known number
     - command: napari-nuclephaser.calibrate_with_dapi_image
