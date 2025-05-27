@@ -135,84 +135,7 @@ https://napari.org/stable/plugins/index.html
 
 # Installation
 
-### Option 1: Using Anaconda (recommended)
-
-We recommend installation using [Anaconda Distribution](https://www.anaconda.com/)
-
-1. Install Anaconda with [Installation instructions](https://www.anaconda.com/docs/getting-started/anaconda/install)
-
-2. Open Anaconda Prompt using Search Bar or Anaconda Navigator
-
-3. Create new environment with default anaconda packages using command
-
-```sh
-conda create --name napari-env anaconda
-```
-4. Activate new environment using command
-
-```sh
-conda activate napari-env
-```
-5. Install [Napari](https://napari.org/stable/) using command
-
-```sh
-pip install napari[all]
-```
-6. Verify napari installation using following command. It should open napari GUI.
-
-```sh
-napari
-```
-7. Install napari-nuclephaser plugin using command
-
-```sh
-pip install napari-nuclephaser
-```
-8. Plugin is ready to be used! Start napari by typing
-
-```sh
-napari
-```
-Initialize plugin's widgets by opening Plugins window and choosing NuclePhaser.
-
-### Installation with GPU
-
-If you have [NVIDIA GPU with CUDA](https://developer.nvidia.com/cuda-gpus), you can significantly increase plugin's speed.
-
-To install GPU-powered version of the plugin, you first need to do all the steps for the installation using Anaconda (above). Then you need to:
-
-1. Install CUDA using [official instructions](https://developer.nvidia.com/cuda-downloads)
-> [!NOTE]
-> Check which versions of CUDA are supported by current [torch installation](https://pytorch.org/get-started/locally/) and consider [installing earlier ones](https://developer.nvidia.com/cuda-toolkit-archive)
-
-2. Check CUDA installation with nvidia-smi command in the command line.
-
-```sh
-nvidia-smi
-```
-3. In the environment with napari and napari-nuclephaser installed, install CUDA-supported torch by typing specific command for your system, which can be found at [torch installation page](https://pytorch.org/get-started/locally/). For example, if you have Windows-based system and CUDA 12.6, your line should look like
-
-```sh
-pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
-```
-
-> [!WARNING]
-> During our tests, torchvision wasn't installed using this line. To avoid that, add -U after install:
-> ```sh
->pip3 install -U torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
->```
-
-----------------------------------
-
-## Option 2: Using standalone napari app (simpler)
-
-1. Download and install napari as standalone app using [installation instructions](https://napari.org/dev/tutorials/fundamentals/installation_bundle_conda.html)
-
-2. Search, download and install napari-nuclephaser plugin by opening the app, navigating to Plugins window and choosing Install/Uninstall plugins...
-
-----------------------------------
-
-This [napari] plugin was generated with [copier] using the [napari-plugin-template].
+For detailed installation instructions, visit our [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/Installation/Installation.html)
 
 ## Contributing
 
@@ -245,3 +168,5 @@ If you encounter any problems, please [file an issue] along with a detailed desc
 [tox]: https://tox.readthedocs.io/en/latest/
 [pip]: https://pypi.org/project/pip/
 [PyPI]: https://pypi.org/
+
+This [napari] plugin was generated with [copier] using the [napari-plugin-template].
