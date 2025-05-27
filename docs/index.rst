@@ -8,6 +8,14 @@ napari-nuclephaser documentation
 
 Welcome to the napari-nuclephaser documentation!
 
+To learn how to install NuclePhaser, read installation instructions:
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Installation instructions
+
+   Installation/Installation.rst
+
 To learn how NuclePhaser can be used for biological tasks, navigate to these sections:
 
 .. toctree::
