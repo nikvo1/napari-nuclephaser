@@ -34,8 +34,8 @@ Parameters
 Accepts only single images, if a stack is chosen, an error will be shown.
 
 **Select model** field is used to select YOLO model that will perform inference.
-Currently only small models (n and s) are available due to the limited size of package on PyPI.
-We're currently working on adding larger models.
+Currently only small models (n and s) are downloaded automatically due to the limited size of package on PyPI.
+Larger models can be downloaded on `NuclePhaser GitHub page <https://github.com/nikvo1/napari-nuclephaser>`_
 
 **Postprocess** field is a part of sliced inference parameters.
 It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.

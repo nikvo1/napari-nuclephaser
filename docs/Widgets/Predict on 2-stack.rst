@@ -1,12 +1,12 @@
-Predict on 1-stack
+Predict on 2-stack
 ==================
 
 Description
 +++++++++++
 
-This widget is used for running prediction with :doc:`YOLO </General information/Object detection overview>` and :doc:`SAHI </General information/Sliced inference overview>` on one-dimensional stacks of images.
+This widget is used for running prediction with :doc:`YOLO </General information/Object detection overview>` and :doc:`SAHI </General information/Sliced inference overview>` on two-dimensional stacks of images.
 Images could be of any size, there is no lower or upper limit.
-An image could be of any format downloadable in Napari (RGB or single channel, 8-bit or 16-bit).
+Images could be of any format downloadable in Napari (RGB or single channel, 8-bit or 16-bit).
 
 The widget returns detections in form of points (Napari Points layer) for each image in a stack.
 The widget can also generate .csv or .xslx file with counting results for each image if the task is to :doc:`count objects </Biological tasks guidelines/Population growth curves>`
@@ -25,7 +25,7 @@ Parameters
 ++++++++++
 
 **Select stack** field is used for selecting a stack of images to run inference on.
-Accepts only 1-dimensional stack of images, if a single image or 2-dimensional stack is chosen, it will return an error.
+Accepts only 2-dimensional stacks of images, if a single image or 1-dimensional stack is chosen, it will return an error.
 
 **Select model** field is used to select YOLO model that will perform inference.
 Currently only small models (n and s) are downloaded automatically due to the limited size of package on PyPI.

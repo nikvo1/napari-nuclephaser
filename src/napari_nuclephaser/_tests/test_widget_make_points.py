@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 import pytest
 
-from napari_nuclephaser._widget import make_points
+from napari_nuclephaser.predict_on_single import make_points
 
 
 # Tests for make_points function
@@ -23,8 +23,12 @@ def test_make_points_basic(make_napari_viewer, mock_prediction):
     )
 
     with (
-        patch("napari_nuclephaser._widget.initialize_model") as mock_init,
-        patch("napari_nuclephaser._widget.get_sliced_prediction") as mock_pred,
+        patch(
+            "napari_nuclephaser.predict_on_single.initialize_model"
+        ) as mock_init,
+        patch(
+            "napari_nuclephaser.predict_on_single.get_sliced_prediction"
+        ) as mock_pred,
     ):
         mock_init.return_value = (Mock(), "mock_model")
         mock_pred.return_value = Mock(
@@ -46,8 +50,12 @@ def test_make_points_bbox_generation(make_napari_viewer, mock_prediction):
     )
 
     with (
-        patch("napari_nuclephaser._widget.initialize_model") as mock_init,
-        patch("napari_nuclephaser._widget.get_sliced_prediction") as mock_pred,
+        patch(
+            "napari_nuclephaser.predict_on_single.initialize_model"
+        ) as mock_init,
+        patch(
+            "napari_nuclephaser.predict_on_single.get_sliced_prediction"
+        ) as mock_pred,
     ):
         mock_init.return_value = (Mock(), "mock_model")
         mock_pred.return_value = Mock(
@@ -69,8 +77,12 @@ def test_make_points_both_outputs(make_napari_viewer, mock_prediction):
     )
 
     with (
-        patch("napari_nuclephaser._widget.initialize_model") as mock_init,
-        patch("napari_nuclephaser._widget.get_sliced_prediction") as mock_pred,
+        patch(
+            "napari_nuclephaser.predict_on_single.initialize_model"
+        ) as mock_init,
+        patch(
+            "napari_nuclephaser.predict_on_single.get_sliced_prediction"
+        ) as mock_pred,
     ):
         mock_init.return_value = (Mock(), "mock_model")
         mock_pred.return_value = Mock(
@@ -97,8 +109,12 @@ def test_make_points_default_generation(make_napari_viewer, mock_prediction):
     )
 
     with (
-        patch("napari_nuclephaser._widget.initialize_model") as mock_init,
-        patch("napari_nuclephaser._widget.get_sliced_prediction") as mock_pred,
+        patch(
+            "napari_nuclephaser.predict_on_single.initialize_model"
+        ) as mock_init,
+        patch(
+            "napari_nuclephaser.predict_on_single.get_sliced_prediction"
+        ) as mock_pred,
     ):
         mock_init.return_value = (Mock(), "mock_model")
         mock_pred.return_value = Mock(
@@ -125,8 +141,12 @@ def test_make_points_output_messages(
     )
 
     with (
-        patch("napari_nuclephaser._widget.initialize_model") as mock_init,
-        patch("napari_nuclephaser._widget.get_sliced_prediction") as mock_pred,
+        patch(
+            "napari_nuclephaser.predict_on_single.initialize_model"
+        ) as mock_init,
+        patch(
+            "napari_nuclephaser.predict_on_single.get_sliced_prediction"
+        ) as mock_pred,
     ):
         mock_init.return_value = (Mock(), "mock_model")
         mock_pred.return_value = Mock(
@@ -161,8 +181,12 @@ def test_make_points_parameter_effects(make_napari_viewer, mock_prediction):
     )
 
     with (
-        patch("napari_nuclephaser._widget.initialize_model") as mock_init,
-        patch("napari_nuclephaser._widget.get_sliced_prediction") as mock_pred,
+        patch(
+            "napari_nuclephaser.predict_on_single.initialize_model"
+        ) as mock_init,
+        patch(
+            "napari_nuclephaser.predict_on_single.get_sliced_prediction"
+        ) as mock_pred,
     ):
         mock_init.return_value = (Mock(), "mock_model")
         mock_pred.return_value = Mock(

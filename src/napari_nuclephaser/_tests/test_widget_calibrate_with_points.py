@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 
-from napari_nuclephaser._widget import calibrate_with_points
+from napari_nuclephaser.calibrate_points import calibrate_with_points
 
 
 def test_calibrate_with_points_happy_path(make_napari_viewer, mocker):
@@ -25,7 +25,7 @@ def test_calibrate_with_points_happy_path(make_napari_viewer, mocker):
 
     # Mock model initialization and predictions
     mocker.patch(
-        "napari_nuclephaser._widget.initialize_model",
+        "napari_nuclephaser.calibrate_points.initialize_model",
         return_value=(MagicMock(), "Phase_Model"),
     )
     mock_result = MagicMock()
@@ -33,13 +33,13 @@ def test_calibrate_with_points_happy_path(make_napari_viewer, mocker):
         MagicMock(score=MagicMock(value=0.7))
     ]
     mocker.patch(
-        "napari_nuclephaser._widget.get_sliced_prediction",
+        "napari_nuclephaser.calibrate_points.get_sliced_prediction",
         return_value=mock_result,
     )
 
     # Mock file operations
     mock_create_folder = mocker.patch(
-        "napari_nuclephaser._widget.create_unique_subfolder",
+        "napari_nuclephaser.calibrate_points.create_unique_subfolder",
         return_value="/mock/path",
     )
     mocker.patch("matplotlib.pyplot.savefig")
@@ -72,7 +72,7 @@ def test_calibrate_with_points_happy_path(make_napari_viewer, mocker):
 
 def test_calibrate_with_points_error_image_shape(make_napari_viewer, mocker):
     viewer = make_napari_viewer()
-    mock_error = mocker.patch("napari_nuclephaser._widget.show_error")
+    mock_error = mocker.patch("napari_nuclephaser.calibrate_points.show_error")
 
     # Test 3D phase image
     viewer.add_image(
@@ -92,7 +92,7 @@ def test_calibrate_with_points_error_image_shape(make_napari_viewer, mocker):
 
 def test_calibrate_with_points_error_empty_points(make_napari_viewer, mocker):
     viewer = make_napari_viewer()
-    mock_error = mocker.patch("napari_nuclephaser._widget.show_error")
+    mock_error = mocker.patch("napari_nuclephaser.calibrate_points.show_error")
 
     # Test empty points layer
     viewer.add_image(
@@ -127,7 +127,7 @@ def test_calibrate_with_points_file_creation(
 
     # Mock dependencies
     mocker.patch(
-        "napari_nuclephaser._widget.initialize_model",
+        "napari_nuclephaser.calibrate_points.initialize_model",
         return_value=(MagicMock(), "mock_model"),
     )
     mock_pred = MagicMock()
@@ -135,7 +135,7 @@ def test_calibrate_with_points_file_creation(
         MagicMock(score=MagicMock(value=x)) for x in np.arange(0.01, 1, 0.01)
     ]
     mocker.patch(
-        "napari_nuclephaser._widget.get_sliced_prediction",
+        "napari_nuclephaser.calibrate_points.get_sliced_prediction",
         return_value=mock_pred,
     )
 
@@ -143,7 +143,7 @@ def test_calibrate_with_points_file_creation(
     test_save_dir = tmp_path / "points_test"
     test_save_dir.mkdir()
     mocker.patch(
-        "napari_nuclephaser._widget.create_unique_subfolder",
+        "napari_nuclephaser.calibrate_points.create_unique_subfolder",
         return_value=str(test_save_dir),
     )
 
@@ -152,7 +152,7 @@ def test_calibrate_with_points_file_creation(
     widget(
         viewer=viewer,
         Select_Phase_image=phase_layer,
-        Select_points_layer=points_layer,
+        Select_Points_layer=points_layer,
         Division_size=256,
         Calibration_proportion=0.2,
         Save_folder=tmp_path,

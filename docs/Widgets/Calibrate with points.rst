@@ -53,6 +53,14 @@ For example, if you have an image 6400x6400 pixels, and Division size = 640, you
 **Calibration proportion** determines which part of small images array will be used for calibration, and which part - for test.
 If you have an array of 100 small images and Calibration proportion = 0,1, 10 of those images will be used for calibration, 90 - for test.
 
+**Save folder** is used for selecting a folder in which the calibration plot and metadata.txt files will be saved.
+Inside this folder, a subfolder will be created with Expereiment name.
+
+**Experiment name** is used for setting up the subfolder name in **Save folder** for saving the results.
+If such folder already exists, will create another subfolder with *Experiment name1* or *Experiment name2* etc.
+
+Further parameters are **advanced settings**. Consider changing them only if you have troubles with default ones.
+
 **Random seed** is used for exact reproduction of data.
 The calibration and test parts are divided randomly, using the same random seed will result in the same division.
 
@@ -71,9 +79,3 @@ It's an optional parameter, learn more at :doc:`page about sliced inference </Ge
 
 **Sahi overlap** field is a part of sliced inference parameters.
 It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
-
-**Save folder** is used for selecting a folder in which the calibration plot and metadata.txt files will be saved.
-Inside this folder, a subfolder will be created with Expereiment name.
-
-**Experiment name** is used for setting up the subfolder name in **Save folder** for saving the results.
-If such folder already exists, will create another subfolder with *Experiment name1* or *Experiment name2* etc.

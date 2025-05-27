@@ -8,6 +8,14 @@ napari-nuclephaser documentation
 
 Welcome to the napari-nuclephaser documentation!
 
+To learn how to install NuclePhaser, read installation instructions:
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Installation instructions
+
+   Installation/Installation.rst
+
 To learn how NuclePhaser can be used for biological tasks, navigate to these sections:
 
 .. toctree::
@@ -35,6 +43,7 @@ To learn more about widgets and their functions, navigate to the widget page you
 
    Widgets/Predict on single image.rst
    Widgets/Predict on 1-stack.rst
+   Widgets/Predict on 2-stack.rst
    Widgets/Calibrate with known number.rst
    Widgets/Calibrate with DAPI.rst
    Widgets/Calibrate with points.rst

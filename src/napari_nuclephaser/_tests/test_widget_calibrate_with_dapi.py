@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 
-from napari_nuclephaser._widget import calibrate_with_dapi_image
+from napari_nuclephaser.calibrate_dapi import calibrate_with_dapi_image
 
 
 def test_calibrate_happy_path(make_napari_viewer, mocker):
@@ -21,7 +21,7 @@ def test_calibrate_happy_path(make_napari_viewer, mocker):
 
     # Mock external dependencies
     mock_initialize = mocker.patch(
-        "napari_nuclephaser._widget.initialize_model"
+        "napari_nuclephaser.calibrate_dapi.initialize_model"
     )
     mock_initialize.side_effect = [
         (MagicMock(), "DAPI_Model"),
@@ -30,7 +30,7 @@ def test_calibrate_happy_path(make_napari_viewer, mocker):
     ]
 
     mock_sahi = mocker.patch(
-        "napari_nuclephaser._widget.get_sliced_prediction"
+        "napari_nuclephaser.calibrate_dapi.get_sliced_prediction"
     )
     mock_result = MagicMock()
     mock_result.object_prediction_list = [
@@ -40,7 +40,7 @@ def test_calibrate_happy_path(make_napari_viewer, mocker):
 
     # Mock file operations
     mock_create_folder = mocker.patch(
-        "napari_nuclephaser._widget.create_unique_subfolder"
+        "napari_nuclephaser.calibrate_dapi.create_unique_subfolder"
     )
     mock_create_folder.return_value = "/mock/path"
 
@@ -76,7 +76,7 @@ def test_calibrate_happy_path(make_napari_viewer, mocker):
 
 def test_image_dimension_errors(make_napari_viewer, mocker):
     viewer = make_napari_viewer()
-    mock_error = mocker.patch("napari_nuclephaser._widget.show_error")
+    mock_error = mocker.patch("napari_nuclephaser.calibrate_dapi.show_error")
 
     # Test 3D phase image
     viewer.add_image(np.random.randint(0, 256, (5, 100, 100)), name="3D_Phase")
@@ -119,7 +119,7 @@ def test_file_creation_basic(make_napari_viewer, mocker, tmp_path):
     # Mock model/prediction components
     mock_model = MagicMock()
     mocker.patch(
-        "napari_nuclephaser._widget.initialize_model",
+        "napari_nuclephaser.calibrate_dapi.initialize_model",
         return_value=(mock_model, "mock_model"),
     )
 
@@ -129,7 +129,7 @@ def test_file_creation_basic(make_napari_viewer, mocker, tmp_path):
         MagicMock(score=MagicMock(value=x)) for x in np.arange(0.01, 1, 0.01)
     ]
     mocker.patch(
-        "napari_nuclephaser._widget.get_sliced_prediction",
+        "napari_nuclephaser.calibrate_dapi.get_sliced_prediction",
         return_value=mock_pred,
     )
 
@@ -139,7 +139,7 @@ def test_file_creation_basic(make_napari_viewer, mocker, tmp_path):
 
     # Mock path handling
     mocker.patch(
-        "napari_nuclephaser._widget.create_unique_subfolder",
+        "napari_nuclephaser.calibrate_dapi.create_unique_subfolder",
         return_value=str(test_save_dir),
     )
 
