@@ -152,7 +152,7 @@ def test_calibrate_with_points_file_creation(
     widget(
         viewer=viewer,
         Select_Phase_image=phase_layer,
-        Select_points_layer=points_layer,
+        Select_Points_layer=points_layer,
         Division_size=256,
         Calibration_proportion=0.2,
         Save_folder=tmp_path,
