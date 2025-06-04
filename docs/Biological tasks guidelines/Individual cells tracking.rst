@@ -19,7 +19,7 @@ It's due to the fact that tracking markers should be **extremely** stable across
 The only way to be 100% sure in tracks is to check tracking markers or result tracks manually.
 
 We suggest using NuclePhaser not as a standalone tracking markers generator, but as an assistant to manual tracking, since manual inspection is inevitable.
-Although, as we showed in our paper (coming soon!), NuclePhaser is capable of generating markers for fully automated tracking without manual inspection,
+Although, as we showed in our `paper <https://www.biorxiv.org/content/10.1101/2025.05.13.653705v1>`_, NuclePhaser is capable of generating markers for fully automated tracking without manual inspection,
 we're aware that in a real world scenario it's better to check everything manually.
 
 The pipeline we're suggesting is simple: NuclePhaser generates draft markers, and user manually corrects them.
