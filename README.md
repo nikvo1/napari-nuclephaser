@@ -1,4 +1,4 @@
-# napari-nuclephaser
+# NuclePhaser: Cell Proliferation Measurement & Cell Tracking Assistant Plugin for Timelapse Images
 
 [![License MIT](https://img.shields.io/pypi/l/napari-nuclephaser.svg?color=green)](https://github.com/nikvo1/napari-nuclephaser/raw/main/LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/napari-nuclephaser.svg?color=green)](https://pypi.org/project/napari-nuclephaser)
@@ -8,13 +8,13 @@
 [![npe2](https://img.shields.io/badge/plugin-npe2-blue?link=https://napari.org/stable/plugins/index.html)](https://napari.org/stable/plugins/index.html)
 [![Copier](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/copier-org/copier/master/img/badge/badge-grayscale-inverted-border-purple.json)](https://github.com/copier-org/copier)
 
-A Napari plugin to detect and count nuclei on phase contrast images
+A Napari plugin for automated cell nuclei detection, proliferation and population growth analysis, and single-cell tracking in brightfield and fluorescent nuclei timelapse microscopy images.
 
-napari-nuclephaser utilizes [Ultralytics](https://docs.ultralytics.com/) YOLO object detection models and [obss/sahi](https://github.com/obss/sahi) sliced inference methods to detect cell nuclei on phase contrast (and other brightfield) images of any size, including large whole slide ones. Learn more with [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html) and [paper](https://www.biorxiv.org/content/10.1101/2025.05.13.653705v1).
+napari-nuclephaser is an open-source Napari plugin designed for scientists who need to measure cell proliferation rates, analyze population growth, and perform individual cell tracking on timelapse microscopy images. It utilizes [Ultralytics](https://docs.ultralytics.com/) YOLO object detection models and [obss/sahi](https://github.com/obss/sahi) sliced inference methods to detect cell nuclei on brightfield and fluorescent images of any size, including large whole slide ones. Learn more with [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html) and [paper](https://www.biorxiv.org/content/10.1101/2025.05.13.653705v1).
 
 # Nuclei detection
 
-We trained a series of [YOLOv5](https://github.com/ultralytics/yolov5) and [YOLOv11](https://github.com/ultralytics/ultralytics) models to detect nuclei on phase contrast images. It can be used for counting cells or for individual cell tracking (using nuclei detections as tracking marks). Prominent features of this approach are:
+We trained a series of [YOLOv5](https://github.com/ultralytics/yolov5) and [YOLOv11](https://github.com/ultralytics/ultralytics) models to detect nuclei on phase contrast images. It can be used for counting cells or for individual cell tracking (using nuclei detections as tracking markers). Prominent features of this approach are:
 - Napari-nuclephaser plugin includes [obss/sahi](https://github.com/obss/sahi) functionality, allowing detection on images of arbitrary sizes.
 
 <p align="center">
@@ -31,6 +31,8 @@ We trained a series of [YOLOv5](https://github.com/ultralytics/yolov5) and [YOLO
   <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/feba9a99-1d37-4962-a2e6-175052aa4925>
   <img alt="Image didn't load" src="https://github.com/user-attachments/assets/c7e4d0e6-44c1-4268-aae5-6bb78500d928">
 </picture>
+
+- Calibration algorithm that allows measuring accuracy for each specific use case.
 
 # Calibration algorithm
 
@@ -51,7 +53,7 @@ We created several calibration (finding optimal confidence threshold) algorithms
 Apart from optimal confidence threshold search, these algorithms return accuracy metrics for specific use cases. Given that the calibration image is large, only part of it is used for search of threshold, while the second part is used for evaluation model's accuracy.
 Accuracy metrics are [Mean Absolute Percentage Error (MAPE)](https://en.wikipedia.org/wiki/Mean_absolute_percentage_error) and prediction-ground truth scatterplot, which shows how well model performs with different densities of cells.
 
-Learn more about calibration in [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/General%20information/Confidence%20threshold%20calibration.html).
+Learn more about calibration in [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/Biological%20tasks%20guidelines/Individual%20cells%20tracking.html).
 
 <p align="center">
   <picture>
@@ -59,6 +61,28 @@ Learn more about calibration in [documentation](https://napari-nuclephaser.readt
   <img alt="Image didn't load" src=https://github.com/user-attachments/assets/6a574845-4ad2-4802-b0f8-f1d908aa585a>
   </picture>
 </p>
+
+# Cell Proliferation Measurement & Population Growth Analysis
+
+With NuclePhaser you can reconstruct population growth curves from timelapse images of growing cell population by counting number of nuclei on each image. Key features of this approach are:
+
+- No special equipment, reagents or dyes required, only regular culture plastic and cell growth medium, microscope with mechanical stage and a PC (even without GPU).
+- [Accuracy measurement for each specific use case](https://napari-nuclephaser.readthedocs.io/en/latest/General%20information/Confidence%20threshold%20calibration.html), so you will be sure the tool is working with appropriate precision.
+- Measuring the number of cells, not the area occupied by cells, which can be significantly influenced by spreading/narrowing of cells. 
+- Complete reproducibility of results with metadata.txt files saved for each experiment.
+
+<p align="center">
+  <picture>
+  <source media="(prefers-color-scheme: dark)" srcset=https://github.com/user-attachments/assets/47b6cee0-7f4a-440f-84ed-de2a5aa2aa36>
+  <img alt="Image didn't load" src=https://github.com/user-attachments/assets/5a084f1a-f977-41fa-b4be-55f37bdf9996>
+  </picture>
+</p>
+
+For more detailed information about how NuclePhaser can be used for cell proliferation measurement & population growth analysis, visit our [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/Biological%20tasks%20guidelines/Population%20growth%20curves.html#).
+
+# Individual cell tracking
+
+NuclePhaser can be used as an assistant for individual cells tracking. This task is extremely difficult, and manual tracking is still the only method with 100% proof against false tracks. With NuclePhaser, you can significantly simplify manual tracking: instead of marking each cell on each image, you can predict nuclei location with NuclePhaser and then correct the result, which is **much** faster. Learn more in [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/Biological%20tasks%20guidelines/Individual%20cells%20tracking.html).
 
 # Models
 
@@ -112,7 +136,7 @@ napari-nuclephaser plugin offers following widgets:
 Learn more about widgets and their functionality at [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html).
 
 # Citation
-
+If you use NuclePhaser in your work, please cite our preprint:
 ```bibtex
 @article {Voloshin2025.05.13.653705,
 	author = {Voloshin, Nikita and Putlyaev, Egor and Chechekhina, Elizaveta and Usachev, Vladimir and Karagyaur, Maxim and Bozov, Kirill and Grigorieva, Olga and Tyurin-Kuzmin, Pyotr and Kulebyakin, Konstantin},
@@ -125,17 +149,9 @@ Learn more about widgets and their functionality at [documentation](https://napa
 }
 ```
 
-<!--
-Don't miss the full getting started guide to set up your new package:
-https://github.com/napari/napari-plugin-template#getting-started
-
-and review the napari docs for plugin developers:
-https://napari.org/stable/plugins/index.html
--->
-
 # Installation
 
-For detailed installation instructions, visit our [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/Installation/Installation.html)
+For detailed installation instructions, visit our [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/Installation/Installation.html).
 
 ## Contributing
 
