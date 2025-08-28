@@ -10,6 +10,8 @@
 
 A Napari plugin for automated cell nuclei detection, proliferation and population growth analysis, and single-cell tracking in brightfield and fluorescent nuclei timelapse microscopy images.
 
+WARNING!!! Further description isn't displayed correctly at Napari Hub. For correctly displayed description, visit our [GITHUB PAGE](https://github.com/nikvo1/napari-nuclephaser).
+
 napari-nuclephaser is an open-source Napari plugin designed for scientists who need to measure cell proliferation rates, analyze population growth, and perform individual cell tracking on timelapse microscopy images. It utilizes [Ultralytics](https://docs.ultralytics.com/) YOLO object detection models and [obss/sahi](https://github.com/obss/sahi) sliced inference methods to detect cell nuclei on brightfield and fluorescent images of any size, including large whole slide ones. Learn more with [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html) and [paper](https://www.biorxiv.org/content/10.1101/2025.05.13.653705v1).
 
 ## Nuclei detection
