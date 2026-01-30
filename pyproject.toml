@@ -27,7 +27,7 @@ requires-python = ">=3.10"
 dependencies = ["setuptools",
 		"wheel",
 		"napari",
-		"ultralytics",
+		"ultralytics==8.3.141",
 		"yolov5",
 		"magicgui",
 		"sahi",
