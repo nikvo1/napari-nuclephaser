@@ -14,6 +14,8 @@ WARNING!!! Further description isn't displayed correctly at Napari Hub. For corr
 
 napari-nuclephaser is an open-source Napari plugin designed for scientists who need to measure cell proliferation rates, analyze population growth, and perform individual cell tracking on timelapse microscopy images. It utilizes [Ultralytics](https://docs.ultralytics.com/) YOLO object detection models and [obss/sahi](https://github.com/obss/sahi) sliced inference methods to detect cell nuclei on brightfield and fluorescent images of any size, including large whole slide ones. Learn more with [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html) and [paper](https://www.biorxiv.org/content/10.1101/2025.05.13.653705v1).
 
+NEW! If default NuclePhaser models aren't accurate enough on your specific use case, you can finetune them for free with cloud GPU using [Google Colab NuclePhaser finetuning notebook](https://colab.research.google.com/drive/1hKMVQqYS0I_GrkYvdz23tPc8FCv2oJvh?usp=sharing). It is specifically designed for users without coding experience. 
+
 ## Nuclei detection
 
 We trained a series of [YOLOv5](https://github.com/ultralytics/yolov5) and [YOLOv11](https://github.com/ultralytics/ultralytics) models to detect nuclei on phase contrast images. It can be used for counting cells or for individual cell tracking (using nuclei detections as tracking markers). Prominent features of this approach are:
@@ -56,6 +58,8 @@ We created several calibration (finding optimal confidence threshold) algorithms
 
 Apart from optimal confidence threshold search, these algorithms return accuracy metrics for specific use cases. Given that the calibration image is large, only part of it is used for search of threshold, while the second part is used for evaluation model's accuracy.
 Accuracy metrics are [Mean Absolute Percentage Error (MAPE)](https://en.wikipedia.org/wiki/Mean_absolute_percentage_error) and prediction-ground truth scatterplot, which shows how well model performs with different densities of cells.
+
+NEW! If default NuclePhaser models aren't accurate enough on your specific use case, you can finetune them for free with cloud GPU using [Google Colab NuclePhaser finetuning notebook](https://colab.research.google.com/drive/1hKMVQqYS0I_GrkYvdz23tPc8FCv2oJvh?usp=sharing). It is specifically designed for users without coding experience. 
 
 Learn more about calibration in [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/Biological%20tasks%20guidelines/Individual%20cells%20tracking.html).
 
