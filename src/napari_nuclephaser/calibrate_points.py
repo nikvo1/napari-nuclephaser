@@ -292,6 +292,10 @@ def calibrate_with_points(
     image_data = _ensure_numpy(Select_Phase_stack.data)
     points_data = _ensure_numpy(Select_Points_layer.data)
 
+    if len(points_data) == 0:
+        show_error("Points layer is empty! Can't proceed further")
+        return None
+
     # Determine number of frames
     if image_data.ndim == 2 or (
         image_data.ndim == 3 and image_data.shape[-1] in (1, 3, 4)
