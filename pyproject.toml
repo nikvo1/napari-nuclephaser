@@ -24,7 +24,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
 requires-python = ">=3.10"
-dependencies = ["setuptools",
+dependencies = ["setuptools==80.10.2",
 		"wheel",
 		"napari",
 		"ultralytics==8.3.141",
