@@ -354,6 +354,7 @@ def calibrate_with_points(
     frame_data = []  # each element: {frame_idx, test_tiles, test_gt}
     thresholds_per_frame = []
 
+    viewer.window._status_bar._toggle_activity_dock(True)
     with progress(
         total=len(frames_with_images), desc="Running calibration"
     ) as pbar:
