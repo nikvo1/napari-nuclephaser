@@ -1,6 +1,5 @@
 import os
 import pathlib
-import time
 from datetime import datetime
 
 import cv2
@@ -129,6 +128,7 @@ def _find_best_threshold_for_frame(
     postprocess: str,
     match_metric: str,
     intersection_threshold: float,
+    frame_idx: int,
 ) -> float | None:
     """
     For a collection of tiles from a single frame, run the model with
@@ -138,21 +138,25 @@ def _find_best_threshold_for_frame(
     """
     # Collect all detection confidences from all tiles
     all_confidences = []
-    for tile in tiles:
-        result = get_sliced_prediction(
-            tile,
-            model,
-            slice_height=sahi_size,
-            slice_width=sahi_size,
-            overlap_height_ratio=sahi_overlap,
-            overlap_width_ratio=sahi_overlap,
-            postprocess_type=postprocess,
-            postprocess_match_metric=match_metric,
-            postprocess_match_threshold=intersection_threshold,
-            verbose=0,
-        )
-        for box in result.object_prediction_list:
-            all_confidences.append(box.score.value)
+    with progress(
+        total=len(tiles), desc=f"Frame {frame_idx} calibration"
+    ) as pbar:
+        for tile in tiles:
+            result = get_sliced_prediction(
+                tile,
+                model,
+                slice_height=sahi_size,
+                slice_width=sahi_size,
+                overlap_height_ratio=sahi_overlap,
+                overlap_width_ratio=sahi_overlap,
+                postprocess_type=postprocess,
+                postprocess_match_metric=match_metric,
+                postprocess_match_threshold=intersection_threshold,
+                verbose=0,
+            )
+            for box in result.object_prediction_list:
+                all_confidences.append(box.score.value)
+            pbar.update(1)
 
     if len(all_confidences) == 0:
         return None
@@ -189,27 +193,29 @@ def _test_frame(
     Returns a DataFrame with columns: Frame, Ground_truth_count, Predicted_count.
     """
     results = []
-    for tile, gt in zip(tiles, ground_truth_counts, strict=False):
-        result = get_sliced_prediction(
-            tile,
-            model,
-            slice_height=sahi_size,
-            slice_width=sahi_size,
-            overlap_height_ratio=sahi_overlap,
-            overlap_width_ratio=sahi_overlap,
-            postprocess_type=postprocess,
-            postprocess_match_metric=match_metric,
-            postprocess_match_threshold=intersection_threshold,
-            verbose=0,
-        )
-        pred = len(result.object_prediction_list)
-        results.append(
-            {
-                "Frame": frame_idx,
-                "Ground_truth_count": gt,
-                "Predicted_count": pred,
-            }
-        )
+    with progress(total=len(tiles), desc=f"Frame {frame_idx} testing") as pbar:
+        for tile, gt in zip(tiles, ground_truth_counts, strict=False):
+            result = get_sliced_prediction(
+                tile,
+                model,
+                slice_height=sahi_size,
+                slice_width=sahi_size,
+                overlap_height_ratio=sahi_overlap,
+                overlap_width_ratio=sahi_overlap,
+                postprocess_type=postprocess,
+                postprocess_match_metric=match_metric,
+                postprocess_match_threshold=intersection_threshold,
+                verbose=0,
+            )
+            pred = len(result.object_prediction_list)
+            results.append(
+                {
+                    "Frame": frame_idx,
+                    "Ground_truth_count": gt,
+                    "Predicted_count": pred,
+                }
+            )
+            pbar.update(1)
     return pd.DataFrame(results)
 
 
@@ -354,15 +360,16 @@ def calibrate_with_points(
     frame_data = []  # each element: {frame_idx, test_tiles, test_gt}
     thresholds_per_frame = []
 
-    viewer.window._status_bar._toggle_activity_dock(True)
+    # Outer progress bar for frames in calibration
     with progress(
         total=len(frames_with_images), desc="Running calibration"
-    ) as pbar:
+    ) as pbar_outer:
         for t in frames_with_images:
             img = images[t]
             pts = points_per_frame.get(t, [])
             if len(pts) == 0:
                 print(f"Frame {t} has no points, skipping.")
+                pbar_outer.update(1)
                 continue
 
             # Split into calibration and test tiles
@@ -373,9 +380,10 @@ def calibrate_with_points(
                 print(
                     f"Frame {t}: no calibration tiles (image too small or no points in tiles). Skipping."
                 )
+                pbar_outer.update(1)
                 continue
 
-            # Find best threshold for this frame
+            # Find best threshold for this frame (inner progress inside function)
             best_thr = _find_best_threshold_for_frame(
                 calib_tiles,
                 calib_gt,
@@ -385,11 +393,13 @@ def calibrate_with_points(
                 Postprocess,
                 Match_metric,
                 Intersection_threshold,
+                frame_idx=t,  # pass frame index for inner progress display
             )
             if best_thr is None:
                 print(
                     f"Frame {t}: model made no detections on calibration tiles. Skipping."
                 )
+                pbar_outer.update(1)
                 continue
 
             thresholds_per_frame.append(best_thr)
@@ -400,16 +410,13 @@ def calibrate_with_points(
                     "test_gt": test_gt,
                 }
             )
-            pbar.update(1)
-
-            time.sleep(0.001)  # tiny yield
             print(f"Frame {t}: best threshold = {best_thr:.3f}")
+            pbar_outer.update(1)
 
     if not thresholds_per_frame:
         show_error(
             "No valid calibration data. Model might not detect anything on your images."
         )
-        viewer.window._status_bar._toggle_activity_dock(False)
         return None
 
     # --- Average threshold ------------------------------------------------
@@ -425,24 +432,28 @@ def calibrate_with_points(
 
     # --- Test on all test tiles ------------------------------------------
     all_test_results = []
-    for fd in progress(frame_data, desc="Testing images"):
-        df_frame = _test_frame(
-            fd["test_tiles"],
-            fd["test_gt"],
-            fd["frame_idx"],
-            calibrated_model,
-            overall_threshold,
-            Sahi_size,
-            Sahi_overlap,
-            Postprocess,
-            Match_metric,
-            Intersection_threshold,
-        )
-        all_test_results.append(df_frame)
+    # Outer progress bar for frames in testing
+    with progress(
+        total=len(frame_data), desc="Testing images"
+    ) as pbar_outer_test:
+        for fd in frame_data:
+            df_frame = _test_frame(
+                fd["test_tiles"],
+                fd["test_gt"],
+                fd["frame_idx"],
+                calibrated_model,
+                overall_threshold,
+                Sahi_size,
+                Sahi_overlap,
+                Postprocess,
+                Match_metric,
+                Intersection_threshold,
+            )
+            all_test_results.append(df_frame)
+            pbar_outer_test.update(1)
 
     if not all_test_results:
         print("No test tiles available. Skipping evaluation.")
-        viewer.window._status_bar._toggle_activity_dock(False)
         return f"Best threshold = {overall_threshold:.3f} (no test data)"
 
     test_df = pd.concat(all_test_results, ignore_index=True)
