@@ -360,6 +360,8 @@ def calibrate_with_points(
     frame_data = []  # each element: {frame_idx, test_tiles, test_gt}
     thresholds_per_frame = []
 
+    viewer.window._status_bar._toggle_activity_dock(True)
+
     # Outer progress bar for frames in calibration
     with progress(
         total=len(frames_with_images), desc="Running calibration"
@@ -525,6 +527,8 @@ def calibrate_with_points(
     pd.DataFrame(points_to_save, columns=["frame", "y", "x"]).to_csv(
         os.path.join(subfolder, "reference_points.csv"), index=False
     )
+
+    viewer.window._status_bar._toggle_activity_dock(False)
 
     # Save metadata
     current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
