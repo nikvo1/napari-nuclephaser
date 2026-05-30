@@ -1,5 +1,6 @@
 import os
 import pathlib
+import time
 from datetime import datetime
 
 import cv2
@@ -353,49 +354,55 @@ def calibrate_with_points(
     frame_data = []  # each element: {frame_idx, test_tiles, test_gt}
     thresholds_per_frame = []
 
-    for t in progress(frames_with_images, desc="Running calibration"):
-        img = images[t]
-        pts = points_per_frame.get(t, [])
-        if len(pts) == 0:
-            print(f"Frame {t} has no points, skipping.")
-            continue
+    with progress(
+        total=len(frames_with_images), desc="Running calibration"
+    ) as pbar:
+        for t in frames_with_images:
+            img = images[t]
+            pts = points_per_frame.get(t, [])
+            if len(pts) == 0:
+                print(f"Frame {t} has no points, skipping.")
+                continue
 
-        # Split into calibration and test tiles
-        calib_tiles, calib_gt, test_tiles, test_gt = _prepare_frame(
-            img, pts, Division_size, Calibration_proportion, Random_seed
-        )
-        if not calib_tiles:
-            print(
-                f"Frame {t}: no calibration tiles (image too small or no points in tiles). Skipping."
+            # Split into calibration and test tiles
+            calib_tiles, calib_gt, test_tiles, test_gt = _prepare_frame(
+                img, pts, Division_size, Calibration_proportion, Random_seed
             )
-            continue
+            if not calib_tiles:
+                print(
+                    f"Frame {t}: no calibration tiles (image too small or no points in tiles). Skipping."
+                )
+                continue
 
-        # Find best threshold for this frame
-        best_thr = _find_best_threshold_for_frame(
-            calib_tiles,
-            calib_gt,
-            phase_model,
-            Sahi_size,
-            Sahi_overlap,
-            Postprocess,
-            Match_metric,
-            Intersection_threshold,
-        )
-        if best_thr is None:
-            print(
-                f"Frame {t}: model made no detections on calibration tiles. Skipping."
+            # Find best threshold for this frame
+            best_thr = _find_best_threshold_for_frame(
+                calib_tiles,
+                calib_gt,
+                phase_model,
+                Sahi_size,
+                Sahi_overlap,
+                Postprocess,
+                Match_metric,
+                Intersection_threshold,
             )
-            continue
+            if best_thr is None:
+                print(
+                    f"Frame {t}: model made no detections on calibration tiles. Skipping."
+                )
+                continue
 
-        thresholds_per_frame.append(best_thr)
-        frame_data.append(
-            {
-                "frame_idx": t,
-                "test_tiles": test_tiles,
-                "test_gt": test_gt,
-            }
-        )
-        print(f"Frame {t}: best threshold = {best_thr:.3f}")
+            thresholds_per_frame.append(best_thr)
+            frame_data.append(
+                {
+                    "frame_idx": t,
+                    "test_tiles": test_tiles,
+                    "test_gt": test_gt,
+                }
+            )
+            pbar.update(1)
+
+            time.sleep(0.001)  # tiny yield
+            print(f"Frame {t}: best threshold = {best_thr:.3f}")
 
     if not thresholds_per_frame:
         show_error(
