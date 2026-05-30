@@ -353,7 +353,6 @@ def calibrate_with_points(
     frame_data = []  # each element: {frame_idx, test_tiles, test_gt}
     thresholds_per_frame = []
 
-    viewer.window._status_bar._toggle_activity_dock(True)
     for t in progress(frames_with_images, desc="Running calibration"):
         img = images[t]
         pts = points_per_frame.get(t, [])
@@ -529,9 +528,8 @@ Overall MAPE: {overall_mape:.2f}%
 Per‑frame MAPE: {per_frame_mape}
 """
     metadata_path = os.path.join(subfolder, "metadata.txt")
-    with open(metadata_path, "w") as f:
+    with open(metadata_path, "w", encoding="utf-8") as f:
         f.write(metadata)
 
-    viewer.window._status_bar._toggle_activity_dock(False)
     show_info("Calibration completed successfully!")
     return f"Best threshold = {overall_threshold:.3f}, Overall MAPE = {overall_mape:.2f}%"
