@@ -354,7 +354,7 @@ def calibrate_with_points(
     thresholds_per_frame = []
 
     viewer.window._status_bar._toggle_activity_dock(True)
-    for t in progress(frames_with_images, desc="Preparing frames"):
+    for t in progress(frames_with_images, desc="Running calibration"):
         img = images[t]
         pts = points_per_frame.get(t, [])
         if len(pts) == 0:
@@ -418,7 +418,7 @@ def calibrate_with_points(
 
     # --- Test on all test tiles ------------------------------------------
     all_test_results = []
-    for fd in progress(frame_data, desc="Testing frames"):
+    for fd in progress(frame_data, desc="Testing images"):
         df_frame = _test_frame(
             fd["test_tiles"],
             fd["test_gt"],
@@ -450,15 +450,15 @@ def calibrate_with_points(
         * 100,
         np.nan,
     )
-    overall_mape = test_df["AbsPercentageError"].mean(skipna=True)
-    print(f"Overall MAPE = {overall_mape:.2f}%")
+    overall_mape = test_df[
+        "AbsPercentageError"
+    ].mean()  # NaN are automatically skipped
 
     # Per‑frame MAPE
     per_frame_mape = (
-        test_df.groupby("Frame")["AbsPercentageError"]
-        .mean(skipna=True)
-        .to_dict()
+        test_df.groupby("Frame")["AbsPercentageError"].mean().to_dict()
     )
+
     for t, mape in per_frame_mape.items():
         print(f"Frame {t}: MAPE = {mape:.2f}%")
 
