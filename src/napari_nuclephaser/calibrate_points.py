@@ -29,7 +29,7 @@ cuda_available = "cuda:0" if cuda.is_available() else "cpu"
 # find default models folder
 models_folder = pathlib.Path(pathlib.Path(__file__).parent / "models")
 first_model = next((x for x in models_folder.iterdir() if x.is_file()), None)
-model_type_list = ("ultralycis", "yolov5", "yolov8", "yolov11", "yolo11")
+model_type_list = ("ultralytics", "yolov5", "yolov8", "yolov11", "yolo11")
 
 
 def _ensure_numpy(arr):
