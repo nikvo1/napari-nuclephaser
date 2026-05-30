@@ -17,7 +17,8 @@ def initialize_model(model_path, confidence_threshold, device):
                 confidence_threshold=confidence_threshold,
                 device=device,
             )
-            detection_model.model.overrides["max_det"] = 10000
+            if model_type != "yolov5":
+                detection_model.model.overrides["max_det"] = 10000
             return (
                 detection_model,
                 model_type,
