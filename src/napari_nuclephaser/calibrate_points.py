@@ -461,9 +461,59 @@ def calibrate_with_points(
             all_test_results.append(df_frame)
             pbar_outer_test.update(1)
 
-    if not all_test_results:
+    # Filter out any empty DataFrames (e.g., frames with no test tiles)
+    non_empty_results = [df for df in all_test_results if not df.empty]
+    if not non_empty_results:
         print("No test tiles available. Skipping evaluation.")
+        # Still save reference points and metadata (without plot)
+        subfolder = create_unique_subfolder(
+            str(Save_folder), str(Experiment_name)
+        )
+
+        # Save points (same as original)
+        if points_data.ndim == 2:
+            if points_data.shape[1] == 2:
+                points_to_save = np.column_stack(
+                    (np.zeros(len(points_data), dtype=int), points_data)
+                )
+            else:
+                points_to_save = points_data
+        else:
+            points_to_save = points_data
+        pd.DataFrame(points_to_save, columns=["frame", "y", "x"]).to_csv(
+            os.path.join(subfolder, "reference_points.csv"), index=False
+        )
+
+        # Save metadata without MAPE/plot
+        current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
+        metadata = f"""Experiment time: {current_date}
+Calibration method: from points (multi‑frame)
+Phase image stack: {Select_Phase_stack.name}, shape {image_data.shape}
+Phase model: {Phase_model.name} ({model_type})
+Division size: {Division_size}
+Calibration proportion: {Calibration_proportion}
+Random seed: {Random_seed}
+Postprocess: {Postprocess}
+Match metric: {Match_metric}
+Intersection threshold: {Intersection_threshold}
+SAHI size: {Sahi_size}
+SAHI overlap: {Sahi_overlap}
+Frames used: {[fd["frame_idx"] for fd in frame_data]}
+Per‑frame thresholds: {dict(zip([fd["frame_idx"] for fd in frame_data], thresholds_per_frame, strict=False))}
+Overall threshold: {overall_threshold:.3f}
+Overall MAPE: No test data
+Per‑frame MAPE: No test data
+"""
+        metadata_path = os.path.join(subfolder, "metadata.txt")
+        with open(metadata_path, "w", encoding="utf-8") as f:
+            f.write(metadata)
+
+        viewer.window._status_bar._toggle_activity_dock(False)
+        show_info("Calibration completed (no test tiles).")
         return f"Best threshold = {overall_threshold:.3f} (no test data)"
+
+    # Otherwise, proceed with normal evaluation using non_empty_results
+    test_df = pd.concat(non_empty_results, ignore_index=True)
 
     test_df = pd.concat(all_test_results, ignore_index=True)
 
