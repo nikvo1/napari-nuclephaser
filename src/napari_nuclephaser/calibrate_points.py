@@ -295,22 +295,30 @@ def calibrate_with_points(
 
     # Prepare points per frame
     if points_data.ndim == 2:
-        # Single image points: (N, 2) -> all belong to frame 0
-        if n_frames != 1:
+        if points_data.shape[1] == 2:
+            # Single image points: (N, 2) -> all belong to frame 0
+            if n_frames != 1:
+                show_error(
+                    "Points layer has 2 columns (y,x) but image stack has multiple frames. "
+                    "Please use a 3D points layer with columns (frame, y, x)."
+                )
+                return None
+            points_per_frame = {0: [(y, x) for y, x in points_data]}
+        elif points_data.shape[1] == 3:
+            # (N, 3) where each point = (frame, y, x)
+            points_per_frame = {}
+            for pt in points_data:
+                t, y, x = int(pt[0]), pt[1], pt[2]
+                points_per_frame.setdefault(t, []).append((y, x))
+        else:
             show_error(
-                "Points layer is 2D but image stack has multiple frames. Please use a 3D points layer (frame, y, x)."
+                f"Points layer has {points_data.shape[1]} columns. Expected 2 (y,x) for a single frame or 3 (frame,y,x) for a stack."
             )
             return None
-        points_per_frame = {0: [(y, x) for y, x in points_data]}
-    elif points_data.ndim == 3 and points_data.shape[1] == 3:
-        # (N, 3) where each point = (frame, y, x)
-        points_per_frame = {}
-        for pt in points_data:
-            t, y, x = int(pt[0]), pt[1], pt[2]
-            points_per_frame.setdefault(t, []).append((y, x))
     else:
         show_error(
-            "Points layer must be 2D (N,2) for a single image or 3D (N,3) for a stack."
+            "Points layer must be 2D (N,2) for a single image or 2D (N,3) for a stack. "
+            f"Got ndim={points_data.ndim}."
         )
         return None
 
