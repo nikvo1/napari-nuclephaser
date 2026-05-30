@@ -12,7 +12,7 @@ from magicgui import magic_factory
 from matplotlib import pyplot as plt
 from napari.layers import Image, Points
 from napari.utils import progress
-from napari.utils.notifications import show_error, show_info  # added show_info
+from napari.utils.notifications import show_error, show_info
 from sahi.predict import get_sliced_prediction
 from torch import cuda
 
@@ -26,7 +26,14 @@ cuda_available = "cuda:0" if cuda.is_available() else "cpu"
 # find default models folder
 models_folder = pathlib.Path(pathlib.Path(__file__).parent / "models")
 first_model = next((x for x in models_folder.iterdir() if x.is_file()), None)
-model_type_list = ("yolov5", "ultralytics", "yolov8", "yolov11", "yolo11")
+model_type_list = ("ultralycis", "yolov5", "yolov8", "yolov11", "yolo11")
+
+
+def _ensure_numpy(arr):
+    """Convert dask array to numpy if necessary."""
+    if hasattr(arr, "__module__") and arr.__module__.startswith("dask"):
+        return arr.compute()
+    return arr
 
 
 def _split_image_and_points(
@@ -81,6 +88,9 @@ def _prepare_frame(
     Returns:
         calibration_tiles, calibration_gt_counts, test_tiles, test_gt_counts
     """
+    # Ensure image is a numpy array (convert from dask if needed)
+    image = _ensure_numpy(image)
+
     # Convert to RGB if necessary
     if len(image.shape) == 2:
         image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
@@ -269,8 +279,8 @@ def calibrate_with_points(
     Returns a string summarising the best threshold and overall MAPE.
     """
     # --- Validate inputs -------------------------------------------------
-    image_data = Select_Phase_stack.data
-    points_data = Select_Points_layer.data
+    image_data = _ensure_numpy(Select_Phase_stack.data)
+    points_data = _ensure_numpy(Select_Points_layer.data)
 
     # Determine number of frames
     if image_data.ndim == 2 or (
@@ -317,8 +327,7 @@ def calibrate_with_points(
             return None
     else:
         show_error(
-            "Points layer must be 2D (N,2) for a single image or 2D (N,3) for a stack. "
-            f"Got ndim={points_data.ndim}."
+            f"Points layer must be 2D (N,2) for a single image or 2D (N,3) for a stack. Got ndim={points_data.ndim}."
         )
         return None
 
@@ -341,9 +350,7 @@ def calibrate_with_points(
     print(f"Model ready. Type: {model_type}, device: {cuda_available}")
 
     # --- Per‑frame preparation and threshold finding ---------------------
-    frame_data = (
-        []
-    )  # each element: (calib_tiles, calib_gt, test_tiles, test_gt)
+    frame_data = []  # each element: {frame_idx, test_tiles, test_gt}
     thresholds_per_frame = []
 
     viewer.window._status_bar._toggle_activity_dock(True)
@@ -443,9 +450,7 @@ def calibrate_with_points(
         * 100,
         np.nan,
     )
-    overall_mape = test_df["AbsPercentageError"].mean(
-        skipna=True
-    )  # mean over non‑NaN
+    overall_mape = test_df["AbsPercentageError"].mean(skipna=True)
     print(f"Overall MAPE = {overall_mape:.2f}%")
 
     # Per‑frame MAPE
@@ -489,8 +494,19 @@ def calibrate_with_points(
     fig.savefig(plot_path, bbox_inches="tight")
     plt.close(fig)
 
-    # Save reference points (the original 3D points layer)
-    Select_Points_layer.save(os.path.join(subfolder, "reference_points.csv"))
+    if points_data.ndim == 2:
+        if points_data.shape[1] == 2:
+            # add a dummy frame column for single frame
+            points_to_save = np.column_stack(
+                (np.zeros(len(points_data), dtype=int), points_data)
+            )
+        else:
+            points_to_save = points_data
+    else:
+        points_to_save = points_data
+    pd.DataFrame(points_to_save, columns=["frame", "y", "x"]).to_csv(
+        os.path.join(subfolder, "reference_points.csv"), index=False
+    )
 
     # Save metadata
     current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
