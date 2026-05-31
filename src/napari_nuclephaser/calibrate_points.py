@@ -620,7 +620,6 @@ Per‑frame MAPE: {per_frame_mape}
         return f"Best threshold = {overall_threshold:.3f}, Overall MAPE = {overall_mape:.2f}%"
 
     # ========================= TTA BLOCK =========================
-    show_info("Test‑time augmentation (TTA) pipeline started...")
 
     def native(img):
         return img
@@ -634,8 +633,10 @@ Per‑frame MAPE: {per_frame_mape}
         return cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
 
     def apply_clahe(img):
+        gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         clahe = cv2.createCLAHE(clipLimit=1.0, tileGridSize=(8, 8))
-        return clahe.apply(img)
+        clahe_gray = clahe.apply(gray)
+        return cv2.cvtColor(clahe_gray, cv2.COLOR_GRAY2RGB)
 
     def adjust_gamma(img, gamma=1.5):
         if img.dtype == np.uint8:
