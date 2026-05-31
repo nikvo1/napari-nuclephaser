@@ -522,8 +522,6 @@ Per‑frame MAPE: No test data
     # Otherwise, proceed with normal evaluation using non_empty_results
     test_df = pd.concat(non_empty_results, ignore_index=True)
 
-    test_df = pd.concat(all_test_results, ignore_index=True)
-
     # --- Compute MAPE (skip tiles with ground truth = 0) -----------------
     test_df["AbsPercentageError"] = np.where(
         test_df["Ground_truth_count"] > 0,
@@ -732,23 +730,28 @@ Per‑frame MAPE: {per_frame_mape}
     for aug_func, aug_name in augmentations:
         print(f"TTA calibration for: {aug_name}")
         thresholds_per_frame = []
-        for idx, (calib_tiles, calib_gt) in enumerate(
-            zip(frame_calib_tiles, frame_calib_gt, strict=False)
-        ):
-            aug_calib_tiles = [aug_func(tile) for tile in calib_tiles]
-            best_thr = _find_best_threshold_for_frame(
-                aug_calib_tiles,
-                calib_gt,
-                phase_model,
-                Sahi_size,
-                Sahi_overlap,
-                Postprocess,
-                Match_metric,
-                Intersection_threshold,
-                frame_idx=frame_indices[idx],
-            )
-            if best_thr is not None:
-                thresholds_per_frame.append(best_thr)
+        # Progress bar over frames for this augmentation
+        with progress(
+            total=len(frame_calib_tiles), desc=f"Calibration with {aug_name}"
+        ) as pbar_cal:
+            for idx, (calib_tiles, calib_gt) in enumerate(
+                zip(frame_calib_tiles, frame_calib_gt, strict=False)
+            ):
+                aug_calib_tiles = [aug_func(tile) for tile in calib_tiles]
+                best_thr = _find_best_threshold_for_frame(
+                    aug_calib_tiles,
+                    calib_gt,
+                    phase_model,
+                    Sahi_size,
+                    Sahi_overlap,
+                    Postprocess,
+                    Match_metric,
+                    Intersection_threshold,
+                    frame_idx=frame_indices[idx],
+                )
+                if best_thr is not None:
+                    thresholds_per_frame.append(best_thr)
+                pbar_cal.update(1)
         if thresholds_per_frame:
             overall_thr = np.mean(thresholds_per_frame)
             tta_thresholds[aug_name] = overall_thr
@@ -776,6 +779,7 @@ Per‑frame MAPE: {per_frame_mape}
         print(f"Testing augmentation: {aug_name} (thr={thr:.3f})")
         model_aug, _ = initialize_model(str(Phase_model), thr, cuda_available)
         pred_counts = []
+        # Progress bar over tiles for this augmentation
         with progress(total=n_tiles, desc=f"Testing {aug_name}") as pbar:
             for tile in all_test_tiles_original:
                 aug_tile = aug_func(tile)
