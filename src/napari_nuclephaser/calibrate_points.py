@@ -234,7 +234,7 @@ def _test_frame(
     },
     Test_with_TTA={
         "widget_type": "CheckBox",
-        "tooltip": "Run test‑time augmentation search to improve counting accuracy.",
+        "tooltip": "Run test‑time augmentation search to improve counting accuracy sacrificing the inference time.",
     },
     Postprocess={
         "choices": ["GREEDYNMM", "NMS", "NMM"],
