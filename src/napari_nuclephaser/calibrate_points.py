@@ -653,9 +653,6 @@ Per‑frame MAPE: {per_frame_mape}
     def median_filter_3(img):
         return cv2.medianBlur(img, 3)
 
-    def median_filter_5(img):
-        return cv2.medianBlur(img, 5)
-
     def bilateral_filter_10(img):
         return cv2.bilateralFilter(img, -1, 10, 10)
 
@@ -672,7 +669,6 @@ Per‑frame MAPE: {per_frame_mape}
         (adjust_gamma, "gamma_1.5"),
         (invert_image, "invert"),
         (median_filter_3, "median_3"),
-        (median_filter_5, "median_5"),
         (bilateral_filter_10, "bilateral_10"),
         (unsharp_mask, "sharpen"),
     ]
