@@ -144,7 +144,7 @@ def _find_best_threshold_for_frame(
     # Collect all detection confidences from all tiles
     all_confidences = []
     with progress(
-        total=len(tiles), desc=f"Frame {frame_idx} calibration"
+        total=len(tiles), desc=f"Frame {frame_idx + 1} calibration"
     ) as pbar:
         for tile in tiles:
             result = get_sliced_prediction(
