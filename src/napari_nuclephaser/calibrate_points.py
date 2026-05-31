@@ -674,7 +674,7 @@ Per‑frame MAPE: {per_frame_mape}
         (median_filter_3, "median_3"),
         (median_filter_5, "median_5"),
         (bilateral_filter_10, "bilateral_10"),
-        (unsharp_mask, "unsharp"),
+        (unsharp_mask, "sharpen"),
     ]
 
     tta_thresholds = {}
