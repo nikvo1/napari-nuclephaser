@@ -659,9 +659,6 @@ Per‑frame MAPE: {per_frame_mape}
     def bilateral_filter_10(img):
         return cv2.bilateralFilter(img, -1, 10, 10)
 
-    def bilateral_filter_30(img):
-        return cv2.bilateralFilter(img, -1, 30, 30)
-
     def unsharp_mask(img, sigma=1.0, strength=1.5):
         blurred = cv2.GaussianBlur(img, (0, 0), sigma)
         sharpened = cv2.addWeighted(img, 1.0 + strength, blurred, -strength, 0)
@@ -677,7 +674,6 @@ Per‑frame MAPE: {per_frame_mape}
         (median_filter_3, "median_3"),
         (median_filter_5, "median_5"),
         (bilateral_filter_10, "bilateral_10"),
-        (bilateral_filter_30, "bilateral_30"),
         (unsharp_mask, "unsharp"),
     ]
 
