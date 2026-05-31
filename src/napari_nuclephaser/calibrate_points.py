@@ -855,6 +855,7 @@ Per‑frame MAPE: {per_frame_mape}
     # Save metadata
     current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
     tta_metadata = f"""Experiment time: {current_date}
+Phase model: {Phase_model.name} ({model_type})
 TTA mode enabled
 Native MAPE: {overall_mape:.2f}%
 Best TTA combination: {' + '.join(best_combo)}
