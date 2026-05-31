@@ -1,5 +1,6 @@
 import os
 import pathlib
+import warnings
 from datetime import datetime
 
 import cv2
@@ -14,6 +15,9 @@ from sahi.predict import get_sliced_prediction
 from torch import cuda
 
 from napari_nuclephaser.utils import create_unique_subfolder, initialize_model
+
+warnings.filterwarnings(action="ignore", category=FutureWarning)
+warnings.filterwarnings(action="ignore", category=UserWarning)
 
 # cuda device check
 cuda_available = "cuda:0" if cuda.is_available() else "cpu"

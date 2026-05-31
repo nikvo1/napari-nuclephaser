@@ -20,6 +20,7 @@ from torch import cuda
 from napari_nuclephaser.utils import create_unique_subfolder, initialize_model
 
 warnings.filterwarnings(action="ignore", category=FutureWarning)
+warnings.filterwarnings(action="ignore", category=UserWarning)
 
 matplotlib.use("Agg")
 
