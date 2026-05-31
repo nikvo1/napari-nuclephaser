@@ -515,7 +515,6 @@ Per‑frame MAPE: No test data
         with open(metadata_path, "w", encoding="utf-8") as f:
             f.write(metadata)
 
-        viewer.window._status_bar._toggle_activity_dock(False)
         show_info("Calibration completed (no test tiles).")
         return f"Best threshold = {overall_threshold:.3f} (no test data)"
 
@@ -590,8 +589,6 @@ Per‑frame MAPE: No test data
         os.path.join(subfolder, "reference_points.csv"), index=False
     )
 
-    viewer.window._status_bar._toggle_activity_dock(False)
-
     # Save metadata
     current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
     metadata = f"""Experiment time: {current_date}
@@ -617,6 +614,7 @@ Per‑frame MAPE: {per_frame_mape}
         f.write(metadata)
 
     if not Test_with_TTA:
+        viewer.window._status_bar._toggle_activity_dock(False)
         return f"Best threshold = {overall_threshold:.3f}, Overall MAPE = {overall_mape:.2f}%"
 
     # ========================= TTA BLOCK =========================
@@ -897,6 +895,9 @@ Postprocess: {Postprocess}, match_metric={Match_metric}, iou_thr={Intersection_t
     # Return comparison string
     improvement = overall_mape - best_mape
     direction = "better" if improvement > 0 else "worse"
+
+    viewer.window._status_bar._toggle_activity_dock(False)
+
     return (
         f"Native threshold = {overall_threshold:.3f}, MAPE = {overall_mape:.2f}%\n"
         f"TTA best combo ({' + '.join(best_combo)}) MAPE = {best_mape:.2f}% ({abs(improvement):.2f}% {direction})"
