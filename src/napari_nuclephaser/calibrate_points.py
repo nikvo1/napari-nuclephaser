@@ -1,3 +1,4 @@
+import itertools
 import os
 import pathlib
 import warnings
@@ -231,6 +232,10 @@ def _test_frame(
     Calibration_proportion={
         "tooltip": "Fraction of tiles used for calibration; the rest are used for testing."
     },
+    Test_with_TTA={
+        "widget_type": "CheckBox",
+        "tooltip": "Run test‑time augmentation search to improve counting accuracy.",
+    },
     Postprocess={
         "choices": ["GREEDYNMM", "NMS", "NMM"],
         "tooltip": "Algorithm to process overlapping detections (see SAHI docs).",
@@ -264,6 +269,7 @@ def calibrate_with_points(
     Phase_model=first_model,
     Division_size=640,
     Calibration_proportion=0.1,
+    Test_with_TTA: bool = False,
     Save_folder=pathlib.Path(),
     Experiment_name="Experiment",
     ADVANCED_SETTINGS="",
@@ -612,5 +618,281 @@ Per‑frame MAPE: {per_frame_mape}
     with open(metadata_path, "w", encoding="utf-8") as f:
         f.write(metadata)
 
-    show_info("Calibration completed successfully!")
-    return f"Best threshold = {overall_threshold:.3f}, Overall MAPE = {overall_mape:.2f}%"
+    if not Test_with_TTA:
+        return f"Best threshold = {overall_threshold:.3f}, Overall MAPE = {overall_mape:.2f}%"
+
+    # ========================= TTA BLOCK =========================
+    show_info("Test‑time augmentation (TTA) pipeline started...")
+
+    def native(img):
+        return img
+
+    def resize_1_5(img):
+        return cv2.resize(
+            img, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_CUBIC
+        )
+
+    def resize_2(img):
+        return cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+
+    def apply_clahe(img):
+        clahe = cv2.createCLAHE(clipLimit=1.0, tileGridSize=(8, 8))
+        return clahe.apply(img)
+
+    def adjust_gamma(img, gamma=1.5):
+        if img.dtype == np.uint8:
+            inv_gamma = 1.0 / gamma
+            table = np.array(
+                [((i / 255.0) ** inv_gamma) * 255 for i in range(256)]
+            ).astype(np.uint8)
+            return cv2.LUT(img, table)
+        normalized = img.astype(np.float32) / 255.0
+        corrected = np.power(normalized, 1.0 / gamma) * 255.0
+        return corrected.astype(np.uint8)
+
+    def invert_image(img):
+        return 255 - img
+
+    def median_filter_3(img):
+        return cv2.medianBlur(img, 3)
+
+    def median_filter_5(img):
+        return cv2.medianBlur(img, 5)
+
+    def bilateral_filter_10(img):
+        return cv2.bilateralFilter(img, -1, 10, 10)
+
+    def bilateral_filter_30(img):
+        return cv2.bilateralFilter(img, -1, 30, 30)
+
+    def unsharp_mask(img, sigma=1.0, strength=1.5):
+        blurred = cv2.GaussianBlur(img, (0, 0), sigma)
+        sharpened = cv2.addWeighted(img, 1.0 + strength, blurred, -strength, 0)
+        return sharpened
+
+    augmentations = [
+        (native, "native"),
+        (resize_1_5, "resize_1.5x"),
+        (resize_2, "resize_2x"),
+        (apply_clahe, "clahe"),
+        (adjust_gamma, "gamma_1.5"),
+        (invert_image, "invert"),
+        (median_filter_3, "median_3"),
+        (median_filter_5, "median_5"),
+        (bilateral_filter_10, "bilateral_10"),
+        (bilateral_filter_30, "bilateral_30"),
+        (unsharp_mask, "unsharp"),
+    ]
+
+    tta_thresholds = {}
+
+    all_test_tiles_original = []
+    all_test_gt = []
+    all_frame_indices = []
+
+    frame_calib_tiles = []
+    frame_calib_gt = []
+    frame_test_tiles = []
+    frame_test_gt = []
+    frame_indices = []
+
+    with progress(
+        total=len(frames_with_images), desc="Preparing tiles for TTA"
+    ) as pbar:
+        for t in frames_with_images:
+            img = images[t]
+            pts = points_per_frame.get(t, [])
+            if len(pts) == 0:
+                pbar.update(1)
+                continue
+            calib_tiles, calib_gt, test_tiles, test_gt = _prepare_frame(
+                img, pts, Division_size, Calibration_proportion, Random_seed
+            )
+            if not calib_tiles or not test_tiles:
+                pbar.update(1)
+                continue
+            frame_calib_tiles.append(calib_tiles)
+            frame_calib_gt.append(calib_gt)
+            frame_test_tiles.append(test_tiles)
+            frame_test_gt.append(test_gt)
+            frame_indices.append(t)
+
+            # Also collect all test tiles (flat) for later combination search
+            for tile, gt in zip(test_tiles, test_gt, strict=False):
+                all_test_tiles_original.append(tile)
+                all_test_gt.append(gt)
+                all_frame_indices.append(t)
+            pbar.update(1)
+
+    if not all_test_tiles_original:
+        show_error("No test tiles available for TTA. Aborting TTA.")
+        return f"Native: threshold={overall_threshold:.3f}, MAPE={overall_mape:.2f}% (TTA skipped)"
+
+    # For each augmentation, calibrate threshold using all frames' calibration tiles
+    for aug_func, aug_name in augmentations:
+        print(f"TTA calibration for: {aug_name}")
+        thresholds_per_frame = []
+        for idx, (calib_tiles, calib_gt) in enumerate(
+            zip(frame_calib_tiles, frame_calib_gt, strict=False)
+        ):
+            aug_calib_tiles = [aug_func(tile) for tile in calib_tiles]
+            best_thr = _find_best_threshold_for_frame(
+                aug_calib_tiles,
+                calib_gt,
+                phase_model,
+                Sahi_size,
+                Sahi_overlap,
+                Postprocess,
+                Match_metric,
+                Intersection_threshold,
+                frame_idx=frame_indices[idx],
+            )
+            if best_thr is not None:
+                thresholds_per_frame.append(best_thr)
+        if thresholds_per_frame:
+            overall_thr = np.mean(thresholds_per_frame)
+            tta_thresholds[aug_name] = overall_thr
+            print(f"  {aug_name}: threshold = {overall_thr:.3f}")
+        else:
+            print(f"  {aug_name}: no valid calibration, skipping")
+            tta_thresholds[aug_name] = None
+
+    # Remove augmentations that failed calibration
+    valid_augs = [
+        name for name, thr in tta_thresholds.items() if thr is not None
+    ]
+    if not valid_augs:
+        show_error("No augmentation produced a valid threshold. TTA aborted.")
+        return f"Native: threshold={overall_threshold:.3f}, MAPE={overall_mape:.2f}% (TTA failed)"
+
+    n_tiles = len(all_test_tiles_original)
+    tile_predictions = np.zeros((n_tiles, len(valid_augs)), dtype=int)
+
+    for i, aug_name in enumerate(valid_augs):
+        thr = tta_thresholds[aug_name]
+        aug_func = next(
+            func for func, name in augmentations if name == aug_name
+        )
+        print(f"Testing augmentation: {aug_name} (thr={thr:.3f})")
+        model_aug, _ = initialize_model(str(Phase_model), thr, cuda_available)
+        pred_counts = []
+        with progress(total=n_tiles, desc=f"Testing {aug_name}") as pbar:
+            for tile in all_test_tiles_original:
+                aug_tile = aug_func(tile)
+                result = get_sliced_prediction(
+                    aug_tile,
+                    model_aug,
+                    slice_height=Sahi_size,
+                    slice_width=Sahi_size,
+                    overlap_height_ratio=Sahi_overlap,
+                    overlap_width_ratio=Sahi_overlap,
+                    postprocess_type=Postprocess,
+                    postprocess_match_metric=Match_metric,
+                    postprocess_match_threshold=Intersection_threshold,
+                    verbose=0,
+                )
+                pred_counts.append(len(result.object_prediction_list))
+                pbar.update(1)
+        tile_predictions[:, i] = pred_counts
+
+    gt_array = np.array(all_test_gt)
+    nonzero_mask = gt_array > 0
+
+    best_mape = float("inf")
+    best_combo = None
+    best_avg_pred = None
+
+    print("Searching for best combination of augmentations...")
+    for r in range(1, len(valid_augs) + 1):
+        for combo_indices in itertools.combinations(range(len(valid_augs)), r):
+            avg_pred = np.mean(
+                tile_predictions[:, list(combo_indices)], axis=1
+            )
+            with np.errstate(divide="ignore", invalid="ignore"):
+                pe = np.abs((gt_array - avg_pred) / gt_array) * 100
+            mape = np.nanmean(pe[nonzero_mask])
+            if mape < best_mape:
+                best_mape = mape
+                best_combo = [valid_augs[i] for i in combo_indices]
+                best_avg_pred = avg_pred
+
+    print(f"Best TTA combination: {' + '.join(best_combo)}")
+    print(f"TTA MAPE: {best_mape:.2f}%")
+
+    tta_subfolder = os.path.join(subfolder, "TTA")
+    os.makedirs(tta_subfolder, exist_ok=True)
+
+    fig_tta, ax_tta = plt.subplots()
+    plot_df = pd.DataFrame(
+        {
+            "Ground_truth_count": gt_array,
+            "Predicted_count": best_avg_pred,
+            "Frame": all_frame_indices,
+        }
+    )
+    sns.scatterplot(
+        data=plot_df,
+        x="Ground_truth_count",
+        y="Predicted_count",
+        hue="Frame",
+        palette="tab10",
+        ax=ax_tta,
+    )
+    max_val = max(
+        plot_df["Ground_truth_count"].max(), plot_df["Predicted_count"].max()
+    )
+    sns.lineplot(
+        x=np.arange(0, max_val + 1),
+        y=np.arange(0, max_val + 1),
+        color="red",
+        ax=ax_tta,
+    )
+    ax_tta.set_title(
+        f"TTA best combination: {' + '.join(best_combo)}\nMAPE = {best_mape:.2f}%"
+    )
+    ax_tta.legend(title="Frame", bbox_to_anchor=(1.05, 1), loc="upper left")
+    tta_plot_path = os.path.join(
+        tta_subfolder, "TTA_best_combination_plot.png"
+    )
+    fig_tta.savefig(tta_plot_path, bbox_inches="tight")
+    plt.close(fig_tta)
+
+    # Save metadata
+    current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
+    tta_metadata = f"""Experiment time: {current_date}
+TTA mode enabled
+Native MAPE: {overall_mape:.2f}%
+Best TTA combination: {' + '.join(best_combo)}
+Best TTA MAPE: {best_mape:.2f}%
+
+Per‑augmentation calibrated thresholds:
+"""
+    for name, thr in tta_thresholds.items():
+        if thr is not None:
+            tta_metadata += f"  {name}: {thr:.3f}\n"
+        else:
+            tta_metadata += f"  {name}: calibration failed\n"
+
+    tta_metadata += f"""
+All test tiles: {n_tiles} tiles (from frames {sorted(set(all_frame_indices))})
+Random seed used: {Random_seed}
+Division size: {Division_size}
+Calibration proportion: {Calibration_proportion}
+SAHI parameters: size={Sahi_size}, overlap={Sahi_overlap}
+Postprocess: {Postprocess}, match_metric={Match_metric}, iou_thr={Intersection_threshold}
+"""
+    tta_metadata_path = os.path.join(tta_subfolder, "metadata_TTA.txt")
+    with open(tta_metadata_path, "w", encoding="utf-8") as f:
+        f.write(tta_metadata)
+
+    show_info(
+        f"TTA completed. Best MAPE: {best_mape:.2f}% (native: {overall_mape:.2f}%)"
+    )
+
+    # Return comparison string
+    improvement = overall_mape - best_mape
+    direction = "better" if improvement > 0 else "worse"
+    return (
+        f"Native threshold = {overall_threshold:.3f}, MAPE = {overall_mape:.2f}%\n"
+        f"TTA best combo ({' + '.join(best_combo)}) MAPE = {best_mape:.2f}% ({abs(improvement):.2f}% {direction})"
+    )
