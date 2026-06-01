@@ -35,6 +35,12 @@ Larger models can be downloaded on `NuclePhaser GitHub page <https://github.com/
 Confidence threshold is the **most important paramter** for the task of counting objects.
 Learn more about how to find the optimal threshold for your specific use case at :doc:`Confidence threshold calibration page </General information/Confidence threshold calibration>`.
 
+**Use TTA** checkbox is used for running inference with TTA (test-time augmentations). Requires passing metadata_TTA.txt created by Calibrate with points widget.
+Learn more at :doc:`page about TTA </General information/Test-time augmentations (TTA)>`.
+
+**TTA metadata file** field is used for passing the metadata_TTA.txt file created by Calibrate with points widget.
+Learn more at :doc:`page about TTA </General information/Test-time augmentations (TTA)>`.
+
 **Save result** checkbox is used for selecting whether you need counting results or not.
 If the task is to count the number of objects on each frame, check this box.
 It will create a subfolder with **Experiment name** at **Save folder** location with .csv and/or .xlsx file with counting results, as well as metadata.txt file with all the parameters for exact reproduction of results.

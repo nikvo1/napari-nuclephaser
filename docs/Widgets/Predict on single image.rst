@@ -52,6 +52,12 @@ Select it if you want to generate Napari Shapes layer with a rectangle for each 
 **Show confidence** checkbox is used to add confidence scores for each bounding box.
 Works only if **Generate bbox** checkbox is active.
 
+**Use TTA** checkbox is used for running inference with TTA (test-time augmentations). Requires passing metadata_TTA.txt created by Calibrate with points widget.
+Learn more at :doc:`page about TTA </General information/Test-time augmentations (TTA)>`.
+
+**TTA metadata file** field is used for passing the metadata_TTA.txt file created by Calibrate with points widget.
+Learn more at :doc:`page about TTA </General information/Test-time augmentations (TTA)>`.
+
 **Confidence threshold** field is used to set up a confidence threshold for the YOLO model.
 Confidence threshold is the **most important paramter** for the task of counting objects.
 Learn more about how to find the optimal threshold for your specific use case at :doc:`Confidence threshold calibration page </General information/Confidence threshold calibration>`.

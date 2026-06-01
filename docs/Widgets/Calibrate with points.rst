@@ -53,6 +53,9 @@ For example, if you have an image 6400x6400 pixels, and Division size = 640, you
 **Calibration proportion** determines which part of small images array will be used for calibration, and which part - for test.
 If you have an array of 100 small images and Calibration proportion = 0,1, 10 of those images will be used for calibration, 90 - for test.
 
+**Test with TTA** checkbox is used for running calibration and test with TTA (test-time augmentations).
+Learn more at :doc:`page about TTA </General information/Test-time augmentations (TTA)>`.
+
 **Save folder** is used for selecting a folder in which the calibration plot and metadata.txt files will be saved.
 Inside this folder, a subfolder will be created with Expereiment name.
 

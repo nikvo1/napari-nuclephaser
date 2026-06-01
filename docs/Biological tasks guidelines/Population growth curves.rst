@@ -169,6 +169,8 @@ Step 8. Press **Calibrate**.
 
 This calibration algorithm is fast and should quickly provide the result optimal confidence threshold in the line below the **Calibrate** button.
 
+.. note:: If the accuracy isn't high enough, there are two ways of increasing it. You can finetune NuclePhaser model using `Colab notebook <https://colab.research.google.com/drive/1hKMVQqYS0I_GrkYvdz23tPc8FCv2oJvh?usp=sharing>`_ or use :doc:`TTA </General information/Test-time augmentations (TTA)>`.
+
 Step 2: Applying the calibrated model to a stack of images
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -214,8 +216,6 @@ Step 10. Press **Predict**.
 Surprisingly, the most influential factor on waiting time is **number of objects on an image**.
 It's due to the fact that postprocess algorithm (NMS or NMM) has O(n\ :sup:`2`) `notation <https://en.wikipedia.org/wiki/Big_O_notation>`_, so it can take much more time than applying the deep learning algorithm itself.
 In our practice, inference time for one image exceeds 10-20 minutes when there are close to 100,000 objects on an image.
-
-.. hint:: You can track the process in the command line that you used to initiate the Napari (not available in standalone application). It provides an estimated time to process the whole stack.
 
 .. figure:: ../Images/Stack_CLI.jpg
         :scale: 50 %

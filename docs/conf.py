@@ -9,7 +9,7 @@
 project = "napari-nuclephaser"
 project_copyright = "2025, Nikita Voloshin"
 author = "Nikita Voloshin"
-release = "0.0.5"
+release = "0.3.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
