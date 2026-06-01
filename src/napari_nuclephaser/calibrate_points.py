@@ -158,6 +158,7 @@ def _find_best_threshold_for_frame(
                 postprocess_match_metric=match_metric,
                 postprocess_match_threshold=intersection_threshold,
                 verbose=0,
+                force_postprocess_type=True,
             )
             for box in result.object_prediction_list:
                 all_confidences.append(box.score.value)
@@ -211,6 +212,7 @@ def _test_frame(
                 postprocess_match_metric=match_metric,
                 postprocess_match_threshold=intersection_threshold,
                 verbose=0,
+                force_postprocess_type=True,
             )
             pred = len(result.object_prediction_list)
             results.append(
@@ -785,6 +787,7 @@ Per‑frame MAPE: {per_frame_mape}
                     postprocess_match_metric=Match_metric,
                     postprocess_match_threshold=Intersection_threshold,
                     verbose=0,
+                    force_postprocess_type=True,
                 )
                 pred_counts.append(len(result.object_prediction_list))
                 pbar.update(1)

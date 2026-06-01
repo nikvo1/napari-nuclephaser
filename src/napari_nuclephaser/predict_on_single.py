@@ -125,6 +125,7 @@ def make_points(
         postprocess_type=Postprocess,
         postprocess_match_metric=Match_metric,
         postprocess_match_threshold=Intersection_threshold,
+        force_postprocess_type=True,
     )  # Standard SAHI sliced prediction code
     result = result.to_coco_predictions()
     print("Prediction is done!")

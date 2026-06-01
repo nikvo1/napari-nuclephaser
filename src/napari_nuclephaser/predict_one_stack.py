@@ -152,6 +152,7 @@ def predict_on_stack(
             postprocess_match_metric=Match_metric,
             postprocess_match_threshold=Intersection_threshold,
             verbose=0,
+            force_postprocess_type=True,
         )
         result = result.to_coco_predictions()
         for instance in result:
