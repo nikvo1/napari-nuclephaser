@@ -130,6 +130,24 @@ def predict_on_two_stack(
 
     print("Running predictions...")
     viewer.window._status_bar._toggle_activity_dock(True)
+
+    # Helper to create a progress callback for each frame (similar to one-stack version)
+    def make_slice_callback(frame_idx_i, frame_idx_j):
+        pbar = None
+
+        def callback(current: int, total: int):
+            nonlocal pbar
+            if pbar is None:
+                pbar = progress(
+                    total=total,
+                    desc=f"Sliced prediction for frame ({frame_idx_i+1}, {frame_idx_j+1})",
+                )
+            pbar.update(1)
+            if current == total:
+                pbar.close()
+
+        return callback
+
     for i in progress(range(len(pic)), desc="Loop through dimension 1"):
         for j in progress(range(len(pic[i])), desc="Loop through dimension 2"):
             frame = pic[i][j]
@@ -157,6 +175,8 @@ def predict_on_two_stack(
                 postprocess_match_threshold=Intersection_threshold,
                 verbose=0,
                 force_postprocess_type=True,
+                progress_bar=False,
+                progress_callback=make_slice_callback(i, j),
             )
             result = result.to_coco_predictions()
             for instance in result:
