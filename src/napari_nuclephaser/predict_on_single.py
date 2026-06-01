@@ -128,6 +128,8 @@ def make_points(
         if current == total:
             pbar.close()
 
+    viewer.window._status_bar._toggle_activity_dock(True)
+
     result = get_sliced_prediction(
         pic,
         detection_model,
@@ -211,6 +213,8 @@ def make_points(
                 name=f"{n_cells} bounding boxes {name}",
             )
         return bboxes, scores, n_cells
+
+    viewer.window._status_bar._toggle_activity_dock(False)
 
     if Generate_points:
         print("Generating points...")
