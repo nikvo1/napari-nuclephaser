@@ -303,7 +303,6 @@ def make_points(
                     aug_name, Confidence_threshold
                 )  # fallback to user's threshold if missing
                 # Initialize model with this threshold (temporary)
-                print(f"I'm using threshold {thr}")
                 model, _ = initialize_model(
                     str(Select_model), thr, cuda_available
                 )
@@ -339,15 +338,19 @@ def make_points(
                     progress_callback=progress_callback,
                 )
                 result = result.to_coco_predictions()
-                # Transform points if needed (scale factor != 1)
+                # Transform points and bounding boxes back to original coordinates
                 points_aug = []
+                bboxes_aug = []
+                scores_aug = []
                 for instance in result:
                     bbox = instance[
                         "bbox"
-                    ]  # [x, y, width, height] in augmented image coordinates
-                    # Center of bbox
+                    ]  # [x, y, width, height] in augmented image
+                    score = instance["score"]
+                    scores_aug.append(score)
+
+                    # Center point
                     if scale_factor != 1.0:
-                        # Scale back to original image coordinates
                         center_x = int((bbox[0] + bbox[2] // 2) * scale_factor)
                         center_y = int((bbox[1] + bbox[3] // 2) * scale_factor)
                     else:
@@ -356,8 +359,32 @@ def make_points(
                     points_aug.append(
                         [center_y, center_x]
                     )  # napari uses (y, x)
+
+                    # Bounding box rectangle
+                    if scale_factor != 1.0:
+                        x_orig = bbox[0] * scale_factor
+                        y_orig = bbox[1] * scale_factor
+                        w_orig = bbox[2] * scale_factor
+                        h_orig = bbox[3] * scale_factor
+                    else:
+                        x_orig = bbox[0]
+                        y_orig = bbox[1]
+                        w_orig = bbox[2]
+                        h_orig = bbox[3]
+
+                    # Convert to napari polygon points (each point is (y, x))
+                    y1 = int(x_orig)  # row of top-left
+                    x1 = int(y_orig)  # col of top-left
+                    y2 = int(x_orig + w_orig)  # row of bottom-right
+                    x2 = int(y_orig + h_orig)  # col of bottom-right
+                    polygon = np.array(
+                        [[x1, y1], [x1, y2], [x2, y2], [x2, y1]]
+                    )
+                    bboxes_aug.append(polygon)
+
                 n_cells = len(points_aug)
-                # Add points layer for this augmentation
+
+                # Add points layer if requested
                 if Generate_points or (
                     not Generate_points and not Generate_bbox
                 ):
@@ -366,12 +393,37 @@ def make_points(
                         size=Points_size,
                         name=f"{n_cells} points ({aug_name}) {name}",
                     )
-                # Optionally generate bbox (not required for TTA but could be implemented similarly)
+
+                # Add bounding boxes layer if requested
                 if Generate_bbox:
-                    # For simplicity, we skip bbox generation in TTA mode (or could add)
-                    show_info(
-                        "Bounding box generation not supported in TTA mode (only points)."
-                    )
+                    properties = {"score": scores_aug}
+                    if Show_confidence:
+                        text_parameters = {
+                            "string": "{score:.2f}",
+                            "size": Score_text_size,
+                            "color": "red",
+                            "anchor": "upper_left",
+                            "translation": [-3, 0],
+                        }
+                        viewer.add_shapes(
+                            bboxes_aug,
+                            face_color="transparent",
+                            edge_color="red",
+                            edge_width=Bbox_thickness,
+                            properties=properties,
+                            text=text_parameters,
+                            name=f"{n_cells} bounding boxes ({aug_name}) {name}",
+                        )
+                    else:
+                        viewer.add_shapes(
+                            bboxes_aug,
+                            face_color="transparent",
+                            edge_color="red",
+                            edge_width=Bbox_thickness,
+                            properties=properties,
+                            name=f"{n_cells} bounding boxes ({aug_name}) {name}",
+                        )
+
                 all_counts.append(n_cells)
                 pbar_augs.update(1)
 
