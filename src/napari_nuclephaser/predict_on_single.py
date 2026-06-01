@@ -6,6 +6,7 @@ import napari
 import numpy as np
 from magicgui import magic_factory
 from napari.layers import Image
+from napari.utils import progress
 from napari.utils.notifications import show_error
 from sahi.predict import get_sliced_prediction
 from torch import cuda
@@ -115,6 +116,18 @@ def make_points(
     )
 
     print("Performing sliced prediction...")
+
+    # Create a progress callback using napari's progress bar
+    pbar = None
+
+    def progress_callback(current: int, total: int):
+        nonlocal pbar
+        if pbar is None:
+            pbar = progress(total=total, desc="Processing slices")
+        pbar.update(1)
+        if current == total:
+            pbar.close()
+
     result = get_sliced_prediction(
         pic,
         detection_model,
@@ -126,7 +139,9 @@ def make_points(
         postprocess_match_metric=Match_metric,
         postprocess_match_threshold=Intersection_threshold,
         force_postprocess_type=True,
-    )  # Standard SAHI sliced prediction code
+        progress_bar=False,
+        progress_callback=progress_callback,
+    )
     result = result.to_coco_predictions()
     print("Prediction is done!")
 
