@@ -1,6 +1,5 @@
 import os
 import pathlib
-from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -109,19 +108,6 @@ def count_points_in_stack(
             csv_path = os.path.join(subfolder, f"{name}_counts.csv")
             df.to_csv(csv_path, index=False)
             show_info(f"Saved CSV (default) to {csv_path}")
-
-        # Save a simple metadata file
-        current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
-        metadata = f"""Experiment time: {current_date}
-Points count widget
-Points layer name: {name}
-Point dimensionality: {ndim}
-Number of points: {len(points_data)}
-"""
-        metadata_path = os.path.join(subfolder, f"{name}_metadata.txt")
-        with open(metadata_path, "w") as f:
-            f.write(metadata)
-        show_info("Metadata saved.")
 
     # Return a string summary that will appear in the magicgui result widget
     return summary
