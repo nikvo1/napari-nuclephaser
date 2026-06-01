@@ -1,13 +1,17 @@
+import os
 import pathlib
+import re
 import warnings
+from datetime import datetime
 
 import cv2
 import napari
 import numpy as np
+import pandas as pd
 from magicgui import magic_factory
 from napari.layers import Image
 from napari.utils import progress
-from napari.utils.notifications import show_error
+from napari.utils.notifications import show_error, show_info
 from sahi.predict import get_sliced_prediction
 from torch import cuda
 
@@ -24,6 +28,122 @@ models_folder = pathlib.Path(pathlib.Path(__file__).parent / "models")
 first_model = next((x for x in models_folder.iterdir() if x.is_file()), None)
 
 
+# ---------- Augmentation functions ----------
+def _native(img):
+    return img
+
+
+def _resize_1_5(img):
+    return cv2.resize(img, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_CUBIC)
+
+
+def _resize_2(img):
+    return cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+
+
+def _apply_clahe(img):
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    clahe = cv2.createCLAHE(clipLimit=1.0, tileGridSize=(8, 8))
+    clahe_gray = clahe.apply(gray)
+    return cv2.cvtColor(clahe_gray, cv2.COLOR_GRAY2RGB)
+
+
+def _adjust_gamma(img, gamma=1.5):
+    if img.dtype == np.uint8:
+        inv_gamma = 1.0 / gamma
+        table = np.array(
+            [((i / 255.0) ** inv_gamma) * 255 for i in range(256)]
+        ).astype(np.uint8)
+        return cv2.LUT(img, table)
+    normalized = img.astype(np.float32) / 255.0
+    corrected = np.power(normalized, 1.0 / gamma) * 255.0
+    return corrected.astype(np.uint8)
+
+
+def _invert_image(img):
+    return 255 - img
+
+
+def _median_filter_3(img):
+    return cv2.medianBlur(img, 3)
+
+
+def _bilateral_filter_10(img):
+    return cv2.bilateralFilter(img, -1, 10, 10)
+
+
+def _unsharp_mask(img, sigma=1.0, strength=1.5):
+    blurred = cv2.GaussianBlur(img, (0, 0), sigma)
+    sharpened = cv2.addWeighted(img, 1.0 + strength, blurred, -strength, 0)
+    return sharpened
+
+
+# Mapping from augmentation name (as stored in metadata) to function and scaling factor
+AUGMENTATION_MAP = {
+    "native": (_native, 1.0),
+    "resize_1.5x": (_resize_1_5, 1 / 1.5),
+    "resize_2x": (_resize_2, 0.5),
+    "clahe": (_apply_clahe, 1.0),
+    "gamma_1.5": (lambda x: _adjust_gamma(x, 1.5), 1.0),
+    "invert": (_invert_image, 1.0),
+    "median_3": (_median_filter_3, 1.0),
+    "bilateral_10": (_bilateral_filter_10, 1.0),
+    "sharpen": (_unsharp_mask, 1.0),
+}
+# ---------------------------------------------------------------------------
+
+
+def _parse_metadata(metadata_path):
+    """Parse metadata.txt file and return:
+    - best_augmentations: list of augmentation names (e.g. ['native', 'median_3'])
+    - aug_thresholds: dict {aug_name: threshold}
+    - model_name: string (base name of model file)
+    """
+    with open(metadata_path, encoding="utf-8") as f:
+        content = f.read()
+
+    # Extract model name (e.g. "ND_v11n.pt")
+    model_match = re.search(r"Phase model:\s+([^\s\(]+)", content)
+    model_name = model_match.group(1) if model_match else None
+
+    # Extract best combination line
+    combo_match = re.search(r"Best TTA combination:\s+(.+)", content)
+    if not combo_match:
+        raise ValueError(
+            "Metadata file does not contain 'Best TTA combination' line."
+        )
+    combo_str = combo_match.group(1).strip()
+    best_augmentations = [aug.strip() for aug in combo_str.split("+")]
+
+    # Extract per‑augmentation thresholds
+    thresholds = {}
+    # Find the block starting with "Per‑augmentation calibrated thresholds:"
+    threshold_block_match = re.search(
+        r"Per‑augmentation calibrated thresholds:\s*\n((?:  .+:\s+[\d\.]+\n?)+)",
+        content,
+    )
+    if threshold_block_match:
+        block = threshold_block_match.group(1)
+        for line in block.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(":")
+            if len(parts) == 2:
+                aug_name = parts[0].strip()
+                try:
+                    thr = float(parts[1].strip())
+                    thresholds[aug_name] = thr
+                except ValueError:
+                    pass
+    else:
+        raise ValueError(
+            "Could not find per‑augmentation thresholds in metadata file."
+        )
+
+    return best_augmentations, thresholds, model_name
+
+
 @magic_factory(
     Postprocess={
         "choices": ["GREEDYNMM", "NMS", "NMM"],
@@ -32,6 +152,15 @@ first_model = next((x for x in models_folder.iterdir() if x.is_file()), None)
     Match_metric={
         "choices": ["IOS", "IOU"],
         "tooltip": "A metric to determine when two detections are two different detections overlapping or is it a one detection. Sett obss/sahi library docs for more details",
+    },
+    Use_TTA={
+        "widget_type": "CheckBox",
+        "tooltip": "Use test‑time augmentations defined in a calibration metadata file. Overrides Confidence_threshold and uses per‑augmentation thresholds from the file.",
+    },
+    TTA_metadata_file={
+        "mode": "r",
+        "filter": "*.txt",
+        "tooltip": "Metadata .txt file generated by calibrate_points.py (containing best augmentation combination and thresholds).",
     },
     ADVANCED_SETTINGS={},
     Generate_points={
@@ -65,6 +194,19 @@ first_model = next((x for x in models_folder.iterdir() if x.is_file()), None)
     Score_text_size={
         "tooltip": "Font size of confidence score text if Show confidence parameter is chosen"
     },
+    Save_result={
+        "tooltip": "If chosen, a folder will be created with .csv or .xlsx file containing averaged detection counts across augmentations (TTA mode only)."
+    },
+    Experiment_name={
+        "tooltip": "Name of the subfolder that will be created for the results (TTA mode only)."
+    },
+    Save_csv={
+        "tooltip": "If chosen, .csv format file with counting results will be saved (TTA mode only)."
+    },
+    Save_xlsx={
+        "tooltip": "If chosen, .xlsx format file with counting results will be saved (TTA mode only)."
+    },
+    Save_folder={"mode": "d"},
     call_button="Predict",
     auto_call=False,
     result_widget=False,
@@ -86,29 +228,205 @@ def make_points(
     Points_size=10,
     Bbox_thickness=5,
     Score_text_size=3,
+    Use_TTA=False,
+    TTA_metadata_file=pathlib.Path(),
+    Save_result=False,
+    Save_folder=pathlib.Path(),
+    Experiment_name="Experiment",
+    Save_csv=False,
+    Save_xlsx=True,
 ) -> napari.types.LayerDataTuple:
-    """Takes a single-frame image of any size, YOLO object detection model (v5, v8 or v11) and SAHI parameters ->
-    returns a detection in formats of Points layer and/or Shapes layer with boxes ahd corresponding confidence scores
-    """
+    """Takes a single-frame image, YOLO model, and optional TTA metadata -> adds point/bbox layers and saves averaged counts."""
     pic = Select_image.data
-    if (
-        len(pic.shape) == 2
-    ):  # Check if image is single channel. YOLO models work only with RGB images.
+    if len(pic.shape) == 2:
         pic = cv2.cvtColor(pic, cv2.COLOR_GRAY2RGB)
     if len(pic.shape) > 3 or (
         len(pic.shape) == 3 and pic.shape[-1] not in (1, 3, 4)
-    ):  # Check whether image is single-frame, otherwise return error and stop the function
+    ):
         show_error(
             "Image is not a single frame! Choose different widget for processing stacks of images"
         )
         return None
-    name = Select_image.name  # Fetch image name for further purposes
+    name = Select_image.name
     if pic.dtype == np.uint16:
         pic = cv2.convertScaleAbs(pic, alpha=255 / 65535)
         pic = pic.astype(np.uint8)
 
     viewer.window._status_bar._toggle_activity_dock(True)
 
+    # ---- TTA mode ----
+    if Use_TTA:
+        if not TTA_metadata_file or not TTA_metadata_file.exists():
+            show_error("TTA metadata file not found or not provided.")
+            viewer.window._status_bar._toggle_activity_dock(False)
+            return None
+        if TTA_metadata_file.suffix.lower() != ".txt":
+            show_error("Selected file is not a .txt file.")
+            viewer.window._status_bar._toggle_activity_dock(False)
+            return None
+
+        # Parse metadata
+        try:
+            best_augs, aug_thresholds, model_name_meta = _parse_metadata(
+                str(TTA_metadata_file)
+            )
+        except (ValueError, OSError, KeyError) as e:
+            show_error(f"Failed to parse metadata file: {e}")
+            viewer.window._status_bar._toggle_activity_dock(False)
+            return None
+
+        # Validate model name
+        selected_model_name = pathlib.Path(Select_model).name
+        if model_name_meta and selected_model_name != model_name_meta:
+            show_info(
+                f"Warning: Selected model ({selected_model_name}) does not match model in metadata ({model_name_meta}). Continuing anyway."
+            )
+
+        # For each augmentation in best combination, run inference
+        all_counts = (
+            []
+        )  # store detection count per augmentation (for averaging)
+        # Outer progress bar over augmentations
+        with progress(
+            total=len(best_augs), desc="TTA augmentations"
+        ) as pbar_augs:
+            for aug_name in best_augs:
+                if aug_name not in AUGMENTATION_MAP:
+                    show_error(
+                        f"Unknown augmentation '{aug_name}' in metadata. Skipping this augmentation."
+                    )
+                    pbar_augs.update(1)
+                    continue
+                aug_func, scale_factor = AUGMENTATION_MAP[aug_name]
+                # Get threshold for this augmentation from metadata
+                thr = aug_thresholds.get(
+                    aug_name, Confidence_threshold
+                )  # fallback to user's threshold if missing
+                # Initialize model with this threshold (temporary)
+                model, _ = initialize_model(
+                    str(Select_model), thr, cuda_available
+                )
+
+                # Apply augmentation to whole image
+                aug_img = aug_func(pic)
+                # Run sliced prediction with user's SAHI settings
+                # Create a progress callback for sliced prediction (nested)
+                pbar_inner = None
+
+                def progress_callback(current, total, aug_name=aug_name):
+                    nonlocal pbar_inner
+                    if pbar_inner is None:
+                        pbar_inner = progress(
+                            total=total, desc=f"Sliced prediction ({aug_name})"
+                        )
+                    pbar_inner.update(1)
+                    if current == total:
+                        pbar_inner.close()
+
+                result = get_sliced_prediction(
+                    aug_img,
+                    model,
+                    slice_height=Sahi_size,
+                    slice_width=Sahi_size,
+                    overlap_height_ratio=Sahi_overlap,
+                    overlap_width_ratio=Sahi_overlap,
+                    postprocess_type=Postprocess,
+                    postprocess_match_metric=Match_metric,
+                    postprocess_match_threshold=Intersection_threshold,
+                    force_postprocess_type=True,
+                    progress_bar=False,
+                    progress_callback=progress_callback,
+                )
+                result = result.to_coco_predictions()
+                # Transform points if needed (scale factor != 1)
+                points_aug = []
+                for instance in result:
+                    bbox = instance[
+                        "bbox"
+                    ]  # [x, y, width, height] in augmented image coordinates
+                    # Center of bbox
+                    if scale_factor != 1.0:
+                        # Scale back to original image coordinates
+                        center_x = int((bbox[0] + bbox[2] // 2) * scale_factor)
+                        center_y = int((bbox[1] + bbox[3] // 2) * scale_factor)
+                    else:
+                        center_x = int(bbox[0] + bbox[2] // 2)
+                        center_y = int(bbox[1] + bbox[3] // 2)
+                    points_aug.append(
+                        [center_y, center_x]
+                    )  # napari uses (y, x)
+                n_cells = len(points_aug)
+                # Add points layer for this augmentation
+                if Generate_points or (
+                    not Generate_points and not Generate_bbox
+                ):
+                    viewer.add_points(
+                        np.array(points_aug),
+                        size=Points_size,
+                        name=f"{n_cells} points ({aug_name}) {name}",
+                    )
+                # Optionally generate bbox (not required for TTA but could be implemented similarly)
+                if Generate_bbox:
+                    # For simplicity, we skip bbox generation in TTA mode (or could add)
+                    show_info(
+                        "Bounding box generation not supported in TTA mode (only points)."
+                    )
+                all_counts.append(n_cells)
+                pbar_augs.update(1)
+
+        # Compute average count across augmentations
+        avg_count = np.mean(all_counts) if all_counts else 0
+        # Save results if requested
+        if Save_result:
+            from napari_nuclephaser.utils import create_unique_subfolder
+
+            subfolder = create_unique_subfolder(
+                str(Save_folder), str(Experiment_name)
+            )
+            # Create dataframe with a single row (since it's a single image)
+            result_table = {"Frame": [name], "Count": [avg_count]}
+            df = pd.DataFrame.from_dict(result_table)
+            if Save_csv:
+                df.to_csv(
+                    os.path.join(subfolder, f"{name}_TTA_averaged_counts.csv"),
+                    index=False,
+                )
+            if Save_xlsx:
+                df.to_excel(
+                    os.path.join(
+                        subfolder, f"{name}_TTA_averaged_counts.xlsx"
+                    ),
+                    index=False,
+                )
+            if not Save_csv and not Save_xlsx:
+                df.to_csv(
+                    os.path.join(subfolder, f"{name}_TTA_averaged_counts.csv"),
+                    index=False,
+                )
+            # Save metadata
+            current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
+            metadata = f"""Experiment time: {current_date}
+TTA prediction on single image
+Image napari name: {name}
+Detection model: {Select_model}
+Augmentations used: {' + '.join(best_augs)}
+Per‑augmentation thresholds: {aug_thresholds}
+Averaged detection count: {avg_count:.2f}
+SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Postprocess}, match_metric={Match_metric}, iou_thr={Intersection_threshold}
+"""
+            metadata_path = os.path.join(subfolder, f"{name}_TTA_metadata.txt")
+            with open(metadata_path, "w", encoding="utf-8") as f:
+                f.write(metadata)
+            show_info(f"TTA results saved in {subfolder}")
+        else:
+            show_info(
+                f"TTA inference complete. Averaged detection count = {avg_count:.2f}"
+            )
+
+        viewer.window._status_bar._toggle_activity_dock(False)
+        return None
+
+    # ---- Original (non‑TTA) mode ----
     initialization_pbar = progress(total=1, desc="Initializing model")
     detection_model, model_type = initialize_model(
         rf"{Select_model}", Confidence_threshold, cuda_available
@@ -119,7 +437,6 @@ def make_points(
     initialization_pbar.close()
     print("Performing sliced prediction...")
 
-    # Create a progress callback using napari's progress bar
     pbar = None
 
     def progress_callback(current: int, total: int):
@@ -129,7 +446,7 @@ def make_points(
         pbar.update(1)
         if current == total:
             pbar.close()
-            pbar = progress(total=1, desc="Running postprocessing")
+            # Note: we don't create a new progress bar for postprocessing here
 
     result = get_sliced_prediction(
         pic,
@@ -149,7 +466,6 @@ def make_points(
     print("Prediction is done!")
 
     def create_points(result):
-        # Function for converting prediction results from COCO format into napari.layers.Points layer
         points = []
         for instance in result:
             bbox = instance["bbox"]
@@ -157,14 +473,12 @@ def make_points(
             points.append([X, Y])
         n_cells = len(points)
         points = np.array(points)
-
         viewer.add_points(
             points, size=Points_size, name=f"{n_cells} points {name}"
         )
         return points, n_cells
 
     def create_bbox(result):
-        # Function for converting prediction results from COCO format into napari.layers.Shapes layer
         bboxes = []
         scores = []
         for instance in result:
@@ -173,19 +487,13 @@ def make_points(
             Y1, X1, Y2, X2 = (
                 int(bbox[0]),
                 int(bbox[1]),
-                int(bbox[0] + (bbox[2])),
-                int(bbox[1] + (bbox[3])),
+                int(bbox[0] + bbox[2]),
+                int(bbox[1] + bbox[3]),
             )
             bboxes.append(np.array([[X1, Y1], [X1, Y2], [X2, Y2], [X2, Y1]]))
             scores.append(score)
         n_cells = len(scores)
-        # bboxes, scores = np.array(bboxes), np.array(scores)
-
-        # create the properties dictionary
         properties = {"score": scores}
-
-        # specify the display parameters for the text
-
         if Show_confidence:
             text_parameters = {
                 "string": "{score:.2f}",
@@ -194,7 +502,6 @@ def make_points(
                 "anchor": "upper_left",
                 "translation": [-3, 0],
             }
-
             viewer.add_shapes(
                 bboxes,
                 face_color="transparent",
