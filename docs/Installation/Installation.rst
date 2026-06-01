@@ -5,7 +5,7 @@ Option 1 (simple): Using standalone napari app
 +++++++++++++++++++++++++++++++++++++++++++++++
 
 .. note:: The only disadvantage of this option is inability to install GPU-accelerated version of torch
-1. Download and install napari as standalone app using `installation instructions <https://napari.org/stable/getting_started/installation.html>`_
+1. Download and install napari as standalone app using `installation instructions <https://napari.org/stable/getting_started/installation.html#installation-bundle-conda>`_
 
 2. Search, download and install napari-nuclephaser plugin by opening the app, navigating to Plugins window and choosing Install/Uninstall plugins.
 
