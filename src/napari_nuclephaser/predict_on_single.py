@@ -107,14 +107,16 @@ def make_points(
         pic = cv2.convertScaleAbs(pic, alpha=255 / 65535)
         pic = pic.astype(np.uint8)
 
-    print("Initializing model...")
+    viewer.window._status_bar._toggle_activity_dock(True)
+
+    initialization_pbar = progress(total=1, desc="Initializing model")
     detection_model, model_type = initialize_model(
         rf"{Select_model}", Confidence_threshold, cuda_available
     )
     print(
         f"Model is initialized! Model type is {model_type}. Running on {cuda_available}"
     )
-
+    initialization_pbar.close()
     print("Performing sliced prediction...")
 
     # Create a progress callback using napari's progress bar
@@ -122,14 +124,13 @@ def make_points(
 
     def progress_callback(current: int, total: int):
         nonlocal pbar
+        pbar.close()
         if pbar is None:
             pbar = progress(total=total, desc="Processing slices")
         pbar.update(1)
         if current == total:
             pbar.close()
             pbar = progress(total=1, desc="Running postprocessing")
-
-    viewer.window._status_bar._toggle_activity_dock(True)
 
     result = get_sliced_prediction(
         pic,
