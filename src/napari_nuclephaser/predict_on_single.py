@@ -303,6 +303,7 @@ def make_points(
                     aug_name, Confidence_threshold
                 )  # fallback to user's threshold if missing
                 # Initialize model with this threshold (temporary)
+                print(f"I'm using threshold {thr}")
                 model, _ = initialize_model(
                     str(Select_model), thr, cuda_available
                 )
