@@ -12,9 +12,9 @@ contributions:
     - id: napari-nuclephaser.directorypicker
       title: Pick working directory
       python_name: napari_nuclephaser._widget:directorypicker
-    - id: napari-nuclephaser.give_num_points
+    - id: napari-nuclephaser.count_points
       title: Count up the points
-      python_name: napari_nuclephaser.count_points:give_num_points
+      python_name: napari_nuclephaser.count_points:count_points_in_stack
     - id: napari-nuclephaser.calibrate_with_known_number
       title: Find best threshold for model with known number of object on image
       python_name: napari_nuclephaser.calibrate_known_number:calibrate_with_known_number
@@ -48,5 +48,5 @@ contributions:
       display_name: Calibrate with points
     - command: napari-nuclephaser.convert_points_to_labels
       display_name: Convert points to labels
-    - command: napari-nuclephaser.give_num_points
-      display_name: Count points on single image
+    - command: napari-nuclephaser.count_points
+      display_name: Count points on images

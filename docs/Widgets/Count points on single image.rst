@@ -1,5 +1,5 @@
-Count points on single image
-============================
+Count points on images
+======================
 
 Description
 +++++++++++

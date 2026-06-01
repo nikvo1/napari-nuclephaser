@@ -101,6 +101,7 @@ def calibrate_with_known_number(
         postprocess_type=Postprocess,
         postprocess_match_metric=Match_metric,
         postprocess_match_threshold=Intersection_threshold,
+        force_postprocess_type=True,
     )
     result = result.to_coco_predictions()
     print("Prediction is complete!")

@@ -1,5 +1,6 @@
 import os
 import pathlib
+import warnings
 from datetime import datetime
 
 import cv2
@@ -17,6 +18,9 @@ from sahi.predict import get_sliced_prediction
 from torch import cuda
 
 from napari_nuclephaser.utils import create_unique_subfolder, initialize_model
+
+warnings.filterwarnings(action="ignore", category=FutureWarning)
+warnings.filterwarnings(action="ignore", category=UserWarning)
 
 matplotlib.use("Agg")
 # cuda device check
@@ -209,6 +213,7 @@ def calibrate_with_dapi_image(
             postprocess_match_metric=Match_metric,
             postprocess_match_threshold=Intersection_threshold,
             verbose=0,
+            force_postprocess_type=True,
         )
 
         dapi_count = int(len(dapi_result.object_prediction_list))
@@ -224,6 +229,7 @@ def calibrate_with_dapi_image(
             postprocess_match_metric=Match_metric,
             postprocess_match_threshold=Intersection_threshold,
             verbose=0,
+            force_postprocess_type=True,
         )
 
         detection_confidences = []
@@ -287,6 +293,7 @@ def calibrate_with_dapi_image(
             postprocess_match_metric=Match_metric,
             postprocess_match_threshold=Intersection_threshold,
             verbose=0,
+            force_postprocess_type=True,
         )
 
         dapi_count = len(dapi_result.object_prediction_list)
@@ -303,6 +310,7 @@ def calibrate_with_dapi_image(
             postprocess_match_metric=Match_metric,
             postprocess_match_threshold=Intersection_threshold,
             verbose=0,
+            force_postprocess_type=True,
         )
 
         phase_count = len(phase_result.object_prediction_list)

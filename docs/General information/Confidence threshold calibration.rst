@@ -97,3 +97,12 @@ For more information, see :doc:`Calibrate with DAPI widget page </Widgets/Calibr
 Two metrics are generated during tests: `MAPE <https://en.wikipedia.org/wiki/Mean_absolute_percentage_error>`_ and prediction-ground truth scatterplot.
 The smaller the MAPE, the better. The closer predictions to the red line on scatterplot, the better.
 For more detailed information about the metrics, see our `paper <https://www.biorxiv.org/content/10.1101/2025.05.13.653705v1>`_.
+
+What if accuracy isn't high enough?
++++++++++++++++++++++++++++++++++++
+
+If the accuracy of the model on your specific use case is considered low, there are certain options to increase it.
+You can test another model from NuclePhaser model zoo. In our practice, small models sometimes better than large ones!
+Also, you can try :doc:`TTA (test-time augmentations) </General information/Test-time augmentations (TTA)>`. It is a way of increasing accuracy by sacrificing inference time.
+Finally, you can finetune NuclePhaser model on you specific use case using `Colab notebook <https://colab.research.google.com/drive/1hKMVQqYS0I_GrkYvdz23tPc8FCv2oJvh?usp=sharing>`_.
+However, it requires fluorescent nuclear stain.

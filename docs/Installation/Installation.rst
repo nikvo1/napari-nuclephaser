@@ -1,7 +1,15 @@
 Installation instructions
 =========================
 
-Option 1: Using Anaconda (recommended)
+Option 1 (simple): Using standalone napari app
++++++++++++++++++++++++++++++++++++++++++++++++
+
+.. note:: The only disadvantage of this option is inability to install GPU-accelerated version of torch
+1. Download and install napari as standalone app using `installation instructions <https://napari.org/stable/getting_started/installation.html#installation-bundle-conda>`_
+
+2. Search, download and install napari-nuclephaser plugin by opening the app, navigating to Plugins window and choosing Install/Uninstall plugins.
+
+Option 2 (recommended): Using Anaconda
 ++++++++++++++++++++++++++++++++++++++
 
 We recommend installation using `Anaconda Distribution <https://www.anaconda.com/>`_
@@ -14,7 +22,7 @@ We recommend installation using `Anaconda Distribution <https://www.anaconda.com
 
 .. code-block:: python
 
-   conda create --name napari-env anaconda
+   conda create --name napari-env python=3.10
 
 4. Activate new environment using command
 
@@ -48,7 +56,7 @@ We recommend installation using `Anaconda Distribution <https://www.anaconda.com
 
 Initialize plugin's widgets by opening Plugins window and choosing NuclePhaser.
 
-Option 1 advanced: installation with GPU
+Option 2 advanced: installation with GPU
 ++++++++++++++++++++++++++++++++++++++++
 
 If you have `NVIDIA GPU with CUDA <https://developer.nvidia.com/cuda-gpus>`_, you can significantly increase plugin's speed.
@@ -75,12 +83,3 @@ To install GPU-powered version of the plugin, you first need to do all the steps
 .. code-block:: python
 
    pip3 install -U torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
-
-Option 2: Using standalone napari app (simpler)
-+++++++++++++++++++++++++++++++++++++++++++++++
-
-.. note:: Downsides of this option are: you can't install GPU-powered version and you will not have CLI (Command Line Interface) that prints detailed progress. Otherwise, it's the same.
-
-1. Download and install napari as standalone app using `installation instructions <https://napari.org/dev/tutorials/fundamentals/installation_bundle_conda.html>`_
-
-2. Search, download and install napari-nuclephaser plugin by opening the app, navigating to Plugins window and choosing Install/Uninstall plugins.
