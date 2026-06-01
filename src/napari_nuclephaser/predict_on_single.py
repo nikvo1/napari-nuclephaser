@@ -221,6 +221,11 @@ def make_points(
     Show_confidence=False,
     Use_TTA=False,
     TTA_metadata_file=pathlib.Path(),
+    Save_result=False,
+    Save_folder=pathlib.Path(),
+    Experiment_name="Experiment",
+    Save_csv=False,
+    Save_xlsx=True,
     ADVANCED_SETTINGS="",
     Postprocess="GREEDYNMM",
     Match_metric="IOS",
@@ -230,11 +235,6 @@ def make_points(
     Points_size=10,
     Bbox_thickness=5,
     Score_text_size=3,
-    Save_result=False,
-    Save_folder=pathlib.Path(),
-    Experiment_name="Experiment",
-    Save_csv=False,
-    Save_xlsx=True,
 ) -> napari.types.LayerDataTuple:
     """Takes a single-frame image, YOLO model, and optional TTA metadata -> adds point/bbox layers and saves averaged counts."""
     pic = Select_image.data
