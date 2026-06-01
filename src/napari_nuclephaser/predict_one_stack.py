@@ -196,6 +196,8 @@ def predict_on_stack(
     viewer: napari.Viewer,
     Select_model=first_model,
     Confidence_threshold: float = 0.2,
+    Use_TTA=False,
+    TTA_metadata_file=pathlib.Path(),
     Save_result=True,
     Save_folder=pathlib.Path(),
     Experiment_name="Experiment",
@@ -208,8 +210,6 @@ def predict_on_stack(
     Points_size=30,
     Save_csv=False,
     Save_xlsx=True,
-    Use_TTA=False,
-    TTA_metadata_file=pathlib.Path(),
 ):
     """Takes a 1-dimensional stack of images, YOLO model, and optional TTA metadata -> adds point layers and saves counts."""
     pic = Select_stack.data
