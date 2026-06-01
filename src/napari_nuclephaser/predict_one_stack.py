@@ -123,24 +123,38 @@ def predict_on_stack(
 
     print("Running predictions...")
     viewer.window._status_bar._toggle_activity_dock(True)
+
+    # Helper to create a progress callback for each frame
+    def make_slice_callback():
+        pbar = None
+
+        def callback(current: int, total: int):
+            nonlocal pbar
+            if pbar is None:
+                pbar = progress(
+                    total=total, desc=f"Sliced prediction for frame {i}"
+                )
+            pbar.update(1)
+            if current == total:
+                pbar.close()
+
+        return callback
+
     for i in progress(range(len(pic)), desc="Running predictions"):
-        if (
-            i == 0
-        ):  # Clock the starting time for the first frame to assess the whole stack processing time
+        if i == 0:
             start_time = time.time()
         frame = pic[i]
         if (
             type(frame).__module__ == "dask.array.core"
             and type(frame).__name__ == "Array"
         ):
-            frame = (
-                frame.compute()
-            )  # Code to translate image from dask array to numpy array
+            frame = frame.compute()
         if frame.dtype == np.uint16:
             frame = cv2.convertScaleAbs(frame, alpha=255 / 65535)
             frame = frame.astype(np.uint8)
         if is_gray:
             frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+
         result = get_sliced_prediction(
             frame,
             detection_model,
@@ -153,6 +167,8 @@ def predict_on_stack(
             postprocess_match_threshold=Intersection_threshold,
             verbose=0,
             force_postprocess_type=True,
+            progress_bar=False,
+            progress_callback=make_slice_callback(),
         )
         result = result.to_coco_predictions()
         for instance in result:
@@ -162,7 +178,6 @@ def predict_on_stack(
         result_table["Frame"].append(i)
         result_table["Count"].append(len(result))
 
-        # Clock the end of the first frame processing and assess the whole stack processing time
         if i == 0:
             finish_time = time.time()
             frame_time = round(finish_time - start_time)
