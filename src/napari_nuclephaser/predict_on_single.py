@@ -481,6 +481,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
 
     # ---- Original (non‑TTA) mode ----
     initialization_pbar = progress(total=1, desc="Initializing model")
+    print("Initializing model...")
     detection_model, model_type = initialize_model(
         rf"{Select_model}", Confidence_threshold, cuda_available
     )
