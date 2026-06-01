@@ -73,7 +73,7 @@ def make_points(
     Select_image: Image,
     viewer: napari.Viewer,
     Select_model=first_model,
-    Confidence_threshold: float = 0.5,
+    Confidence_threshold: float = 0.2,
     Generate_points=True,
     Generate_bbox=False,
     Show_confidence=False,

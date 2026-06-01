@@ -73,7 +73,7 @@ def predict_on_two_stack(
     Select_stack: Image,
     viewer: napari.Viewer,
     Select_model=first_model,
-    Confidence_threshold: float = 0.5,
+    Confidence_threshold: float = 0.2,
     Save_result=True,
     Save_folder=pathlib.Path(),
     Experiment_name="Experiment",
