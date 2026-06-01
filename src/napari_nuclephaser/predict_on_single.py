@@ -126,6 +126,7 @@ def make_points(
             pbar = progress(total=total, desc="Processing slices")
         pbar.update(1)
         if current == total:
+            pbar.close()
             pbar = progress(total=1, desc="Running postprocessing")
 
     viewer.window._status_bar._toggle_activity_dock(True)
