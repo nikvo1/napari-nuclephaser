@@ -318,7 +318,7 @@ def predict_on_stack(
                             if pbar_slice is None:
                                 pbar_slice = progress(
                                     total=total,
-                                    desc=f"Sliced {aug_name} frame {frame_idx}",
+                                    desc=f"Sliced prediction {frame_idx+1}",
                                 )
                             pbar_slice.update(1)
                             if current == total:
