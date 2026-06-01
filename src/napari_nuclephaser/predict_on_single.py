@@ -124,7 +124,6 @@ def make_points(
 
     def progress_callback(current: int, total: int):
         nonlocal pbar
-        pbar.close()
         if pbar is None:
             pbar = progress(total=total, desc="Processing slices")
         pbar.update(1)
