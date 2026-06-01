@@ -14,7 +14,7 @@ contributions:
       python_name: napari_nuclephaser._widget:directorypicker
     - id: napari-nuclephaser.count_points
       title: Count up the points
-      python_name: napari_nuclephaser.count_points:count_points
+      python_name: napari_nuclephaser.count_points:count_points_in_stack
     - id: napari-nuclephaser.calibrate_with_known_number
       title: Find best threshold for model with known number of object on image
       python_name: napari_nuclephaser.calibrate_known_number:calibrate_with_known_number
