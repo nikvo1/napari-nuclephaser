@@ -132,7 +132,7 @@ def predict_on_stack(
             nonlocal pbar
             if pbar is None:
                 pbar = progress(
-                    total=total, desc=f"Sliced prediction for frame {i}"
+                    total=total, desc=f"Sliced prediction for frame {i+1}"
                 )
             pbar.update(1)
             if current == total:
