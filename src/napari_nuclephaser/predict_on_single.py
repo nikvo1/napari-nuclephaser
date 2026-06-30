@@ -302,16 +302,15 @@ def _parse_metadata(metadata_path):
         "tooltip": "Font size of confidence score text if Show confidence parameter is chosen"
     },
     Save_result={
-        "tooltip": "If chosen, a folder will be created with .csv or .xlsx file containing averaged detection counts across augmentations (TTA mode only)."
+        "tooltip": "If chosen, results will be saved in the format selected below."
+    },
+    Save_format={
+        "choices": ["CSV", "XLSX", "Both"],
+        "value": "CSV",
+        "tooltip": "Select the output format for saving results (when Save_result is enabled).",
     },
     Experiment_name={
         "tooltip": "Name of the subfolder that will be created for the results (TTA mode only)."
-    },
-    Save_csv={
-        "tooltip": "If chosen, .csv format file with counting results will be saved (TTA mode only)."
-    },
-    Save_xlsx={
-        "tooltip": "If chosen, .xlsx format file with counting results will be saved (TTA mode only)."
     },
     Save_folder={"mode": "d"},
     call_button="Predict",
@@ -331,8 +330,7 @@ def make_points(
     Save_result=False,
     Save_folder=pathlib.Path(),
     Experiment_name="Experiment",
-    Save_csv=False,
-    Save_xlsx=True,
+    Save_format="CSV",
     ADVANCED_SETTINGS="",
     Postprocess="GREEDYNMM",
     Match_metric="IOS",
@@ -541,23 +539,21 @@ def make_points(
             )
             result_table = {"Frame": [name], "Count": [avg_count]}
             df = pd.DataFrame.from_dict(result_table)
-            if Save_csv:
+
+            # Save according to the selected format
+            if Save_format in ("CSV", "Both"):
                 df.to_csv(
                     os.path.join(subfolder, f"{name}_TTA_averaged_counts.csv"),
                     index=False,
                 )
-            if Save_xlsx:
+            if Save_format in ("XLSX", "Both"):
                 df.to_excel(
                     os.path.join(
                         subfolder, f"{name}_TTA_averaged_counts.xlsx"
                     ),
                     index=False,
                 )
-            if not Save_csv and not Save_xlsx:
-                df.to_csv(
-                    os.path.join(subfolder, f"{name}_TTA_averaged_counts.csv"),
-                    index=False,
-                )
+
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
             metadata = f"""Experiment time: {current_date}
 TTA prediction on single image
@@ -788,21 +784,17 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             # Save count
             result_table = {"Frame": [name], "Filtered_count": [n_filtered]}
             df_res = pd.DataFrame.from_dict(result_table)
-            if Save_csv:
+
+            if Save_format in ("CSV", "Both"):
                 df_res.to_csv(
                     os.path.join(dynamic_folder, f"{name}_dynamic_counts.csv"),
                     index=False,
                 )
-            if Save_xlsx:
+            if Save_format in ("XLSX", "Both"):
                 df_res.to_excel(
                     os.path.join(
                         dynamic_folder, f"{name}_dynamic_counts.xlsx"
                     ),
-                    index=False,
-                )
-            if not Save_csv and not Save_xlsx:
-                df_res.to_csv(
-                    os.path.join(dynamic_folder, f"{name}_dynamic_counts.csv"),
                     index=False,
                 )
 
