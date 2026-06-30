@@ -261,7 +261,11 @@ def _parse_metadata(metadata_path):
         "tooltip": "A metric to determine when two detections are two different detections overlapping or is it a one detection. Sett obss/sahi library docs for more details",
     },
     Mode={
-        "choices": ["None", "TTA", "Dynamic threshold"],
+        "choices": [
+            "Regular detection",
+            "Detection with TTA",
+            "Detection with Dynamic threshold",
+        ],
         "tooltip": "Select the prediction mode: standard (None), Test-Time Augmentation (TTA), or dynamic threshold filtering.",
     },
     Mode_file={
@@ -325,7 +329,7 @@ def make_points(
     Generate_points=True,
     Generate_bbox=False,
     Show_confidence=False,
-    Mode="None",
+    Mode="Regular detection",
     Mode_file=pathlib.Path(),
     Save_result=False,
     Save_folder=pathlib.Path(),
@@ -343,8 +347,8 @@ def make_points(
 ) -> napari.types.LayerDataTuple:
     """Takes a single-frame image, YOLO model, and optional TTA or dynamic threshold -> adds point/bbox layers and saves averaged/filtered counts."""
     # ---------- Mode handling ----------
-    use_tta = Mode == "TTA"
-    use_dynamic = Mode == "Dynamic threshold"
+    use_tta = Mode == "Detection with TTA"
+    use_dynamic = Mode == "Detection with Dynamic threshold"
 
     # If mode is not "None", the file must be provided and exist.
     if Mode != "None":
