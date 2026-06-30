@@ -285,7 +285,7 @@ def extract_all_features(
     }
 
 
-def match_points_to_boxes(points, boxes, confidences):
+def match_points_to_boxes(points, boxes, confidences, debug=False):
     N = len(points)
     M = len(boxes)
     if N == 0 or M == 0:
@@ -296,11 +296,22 @@ def match_points_to_boxes(points, boxes, confidences):
     box_geoms = [box(x1, y1, x2, y2) for (x1, x2, y1, y2) in boxes]
     tree = STRtree(box_geoms)
 
+    if debug:
+        print(f"    Matching: {N} points, {M} boxes")
+        if N > 0 and M > 0:
+            print(
+                f"    First point: ({points[0][1]}, {points[0][0]})"
+            )  # (x,y)
+            print(f"    First box: {boxes[0]}")
+
     rows, cols, costs = [], [], []
     for i, (py, px) in enumerate(points):
         pt = Point(px, py)
-        # Use 'intersects' instead of 'contains' to handle points on edges
         candidate_idxs = tree.query(pt, predicate="intersects")
+        if debug and i < 5:  # print first few points
+            print(
+                f"    Point {i} ({px},{py}) -> {len(candidate_idxs)} candidates"
+            )
         for j in candidate_idxs:
             x1, x2, y1, y2 = boxes[j]
             if x1 <= px <= x2 and y1 <= py <= y2:
@@ -316,7 +327,22 @@ def match_points_to_boxes(points, boxes, confidences):
                 cols.append(j)
                 costs.append(cost)
 
+    if debug:
+        print(f"    Total candidate edges: {len(rows)}")
+
     if not rows:
+        # Fallback: brute-force check for debugging
+        if debug:
+            print(
+                "    No candidates found via STRtree. Performing brute-force check on first point..."
+            )
+            if N > 0:
+                py, px = points[0]
+                for j, (x1, x2, y1, y2) in enumerate(boxes[:5]):
+                    inside = x1 <= px <= x2 and y1 <= py <= y2
+                    print(
+                        f"      Box {j}: ({x1},{y1})-({x2},{y2}) -> inside: {inside}"
+                    )
         return [0] * M
 
     BIG = 100.0
@@ -325,10 +351,8 @@ def match_points_to_boxes(points, boxes, confidences):
     for r, c, val in zip(rows, cols, costs, strict=False):
         dense_cost[r, c] = val
 
-    # dummy rows for unmatched boxes
     for j in range(M):
         dense_cost[N + j, j] = 0
-    # dummy columns for unmatched points
     for i in range(N):
         dense_cost[i, M + i] = 0
 
