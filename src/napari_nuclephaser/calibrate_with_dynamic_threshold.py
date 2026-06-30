@@ -285,7 +285,7 @@ def extract_all_features(
     }
 
 
-def match_points_to_boxes(points, boxes, confidences, debug=True):
+def match_points_to_boxes(points, boxes, confidences, debug=False):
     N = len(points)
     M = len(boxes)
     if N == 0 or M == 0:
@@ -299,16 +299,14 @@ def match_points_to_boxes(points, boxes, confidences, debug=True):
     if debug:
         print(f"    Matching: {N} points, {M} boxes")
         if N > 0 and M > 0:
-            print(
-                f"    First point: ({points[0][1]}, {points[0][0]})"
-            )  # (x,y)
+            print(f"    First point: ({points[0][1]}, {points[0][0]})")
             print(f"    First box: {boxes[0]}")
 
     rows, cols, costs = [], [], []
     for i, (py, px) in enumerate(points):
         pt = Point(px, py)
         candidate_idxs = tree.query(pt, predicate="intersects")
-        if debug and i < 5:  # print first few points
+        if debug and i < 5:
             print(
                 f"    Point {i} ({px},{py}) -> {len(candidate_idxs)} candidates"
             )
@@ -331,7 +329,6 @@ def match_points_to_boxes(points, boxes, confidences, debug=True):
         print(f"    Total candidate edges: {len(rows)}")
 
     if not rows:
-        # Fallback: brute-force check for debugging
         if debug:
             print(
                 "    No candidates found via STRtree. Performing brute-force check on first point..."
@@ -348,13 +345,18 @@ def match_points_to_boxes(points, boxes, confidences, debug=True):
     BIG = 100.0
     n_total = N + M
     dense_cost = np.full((n_total, n_total), BIG)
+
+    # Real point -> real box cost (if they intersect)
     for r, c, val in zip(rows, cols, costs, strict=False):
         dense_cost[r, c] = val
 
+    # Dummy rows (for boxes) -> real box: cost 0 to allow a box to be unmatched
     for j in range(M):
         dense_cost[N + j, j] = 0
+
+    # Real point -> dummy column (unmatched point): cost BIG to discourage unmatched points
     for i in range(N):
-        dense_cost[i, M + i] = 0
+        dense_cost[i, M + i] = BIG
 
     row_ind, col_ind = linear_sum_assignment(dense_cost)
 
