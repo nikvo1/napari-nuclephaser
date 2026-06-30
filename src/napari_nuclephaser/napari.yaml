@@ -50,7 +50,7 @@ contributions:
     - command: napari-nuclephaser.calibrate_with_points
       display_name: Calibrate with points
     - command: napari-nuclephaser.calibrate_with_dynamic_threshold
-      display_name: Calibrate with dynamic threshold
+      display_name: Calibrate with dynamic threshold (beta)
     - command: napari-nuclephaser.convert_points_to_labels
       display_name: Convert points to labels
     - command: napari-nuclephaser.count_points
