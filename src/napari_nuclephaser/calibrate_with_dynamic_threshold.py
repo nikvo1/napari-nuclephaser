@@ -670,10 +670,8 @@ def calibrate_with_dynamic_threshold(
 
     # ---------- Calibration: extract features ----------
     print("Extracting features from calibration tiles...")
-    samples_per_frame = defaultdict(list)  # frame_idx -> list of DataFrames
-    tile_data_per_frame = defaultdict(
-        list
-    )  # frame_idx -> list of (tile_gray, points) for rotation
+    samples_per_frame = defaultdict(list)
+    tile_data_per_frame = defaultdict(list)
 
     with progress(
         total=len(calib_data), desc="Calibration feature extraction"
@@ -711,6 +709,16 @@ def calibrate_with_dynamic_threshold(
         show_error("No detections found in calibration tiles.")
         return None
 
+    # Check total samples before balancing
+    total_samples = sum(len(df) for df in samples_per_frame.values())
+    if total_samples == 0:
+        show_error(
+            "No training samples were extracted. Check that the model detects objects and points overlap with detections."
+        )
+        return None
+
+    print(f"Total samples before balancing: {total_samples}")
+
     # ---------- Balance true positives across frames using rotations (as needed) ----------
     print("Balancing true positives across frames...")
     tp_counts = {
@@ -725,11 +733,9 @@ def calibrate_with_dynamic_threshold(
             continue
 
         added_dfs = []
-        # Apply rotations one by one until we reach max_tp or exhaust all angles
         for angle in [90, 180, 270]:
             if current_tp >= max_tp:
                 break
-            # Process all tiles for this rotation
             for tile_gray, points in tile_data_per_frame[frame]:
                 rot_tile, rot_points = rotate_tile_and_points(
                     tile_gray, points, angle
@@ -749,21 +755,15 @@ def calibrate_with_dynamic_threshold(
                     rot_tp = df_rot["ground_truth"].sum()
                     added_dfs.append(df_rot)
                     current_tp += rot_tp
-                    # If we have reached max_tp, we can stop processing tiles for this angle
                     if current_tp >= max_tp:
                         break
-            # If we still haven't reached max_tp, continue to the next angle
-
         if added_dfs:
             new_df = pd.concat(added_dfs, ignore_index=True)
             samples_per_frame[frame] = pd.concat(
                 [df, new_df], ignore_index=True
             )
-        else:
-            # No additional samples were generated (maybe no detections in rotations)
-            pass
 
-    # Downsample TP per frame to max_tp (in case we overshoot)
+    # Downsample TP per frame to max_tp
     for frame in samples_per_frame:
         df = samples_per_frame[frame]
         tp_df = df[df["ground_truth"] == 1]
@@ -777,12 +777,27 @@ def calibrate_with_dynamic_threshold(
     full_df = pd.concat(all_dfs, ignore_index=True)
     tp = full_df[full_df["ground_truth"] == 1]
     fp = full_df[full_df["ground_truth"] == 0]
+
+    # If there are no true positives or no false positives, we cannot balance meaningfully.
+    if len(tp) == 0:
+        show_error(
+            "No true positive samples found. Check point-to-box matching."
+        )
+        return None
+
     if len(fp) > len(tp):
         fp = fp.sample(n=len(tp), random_state=Random_seed)
     balanced_df = pd.concat([tp, fp], ignore_index=True).sample(
         frac=1, random_state=Random_seed
     )
 
+    if balanced_df.empty:
+        show_error("Balanced training set is empty. Cannot train classifier.")
+        return None
+
+    print(
+        f"Balanced training set size: {len(balanced_df)} (TP: {len(tp)}, FP: {len(fp)})"
+    )
     # ---------- Train decision tree ----------
     feature_cols = [
         "confidence",
