@@ -431,7 +431,7 @@ def extract_detections_and_features(
     Calibration_proportion={
         "tooltip": "Fraction of tiles used for calibration."
     },
-    Blur_max_sigma={
+    Max_blur_strength={
         "widget_type": "SpinBox",
         "min": 0,
         "max": 6,
@@ -471,7 +471,7 @@ def calibrate_with_dynamic_threshold(
     Phase_model=first_model,
     Division_size=640,
     Calibration_proportion=0.5,
-    Blur_max_sigma=6,
+    Max_blur_strength=6,
     Save_folder=pathlib.Path(),
     Experiment_name="Experiment",
     ADVANCED_SETTINGS="",
@@ -539,9 +539,9 @@ def calibrate_with_dynamic_threshold(
         show_error("No valid frames found.")
         return None
 
-    sigmas = list(range(Blur_max_sigma + 1))
+    sigmas = list(range(Max_blur_strength + 1))
     if not sigmas:
-        show_error("Blur_max_sigma must be >= 0.")
+        show_error("Max_blur_strength must be >= 0.")
         return None
 
     # ---------- Initialise model (low confidence) ----------
@@ -1054,7 +1054,7 @@ Match metric: {Match_metric}
 Intersection threshold: {Intersection_threshold}
 SAHI size: {Sahi_size}
 SAHI overlap: {Sahi_overlap}
-Blur max sigma: {Blur_max_sigma} (sigmas tested: {sigmas})
+Blur max sigma: {Max_blur_strength} (sigmas tested: {sigmas})
 
 --- Training details ---
 Number of frames used for calibration: {len(samples_per_frame)}
