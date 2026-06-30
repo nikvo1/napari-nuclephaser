@@ -437,7 +437,7 @@ def extract_detections_and_features(
         "min": 0,
         "max": 6,
         "value": 6,
-        "tooltip": "Maximum sigma for Gaussian blur. Sigmas 0,1,...,max will be tested.",
+        "tooltip": "Maximum defocus strength that the model with adapt to. The bigger - the more resistant the model to defocus, but calibration will take longer.",
     },
     Postprocess={
         "choices": ["GREEDYNMM", "NMS", "NMM"],
