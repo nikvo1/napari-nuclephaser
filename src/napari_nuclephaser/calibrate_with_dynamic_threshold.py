@@ -1023,10 +1023,7 @@ def calibrate_with_dynamic_threshold(
             frame = entry["frame_idx"]
             for sigma in sigmas:
                 np.random.seed(Random_seed + sigma + frame)
-                aug_tile = apply_random_augmentations(
-                    tile_gray, gamma_range=(0.5, 1.5)
-                )
-                blurred = blur_image(aug_tile, sigma)
+                blurred = blur_image(tile_gray, sigma)
                 phase_rgb = cv2.cvtColor(blurred, cv2.COLOR_GRAY2RGB)
                 result = get_sliced_prediction(
                     phase_rgb,
