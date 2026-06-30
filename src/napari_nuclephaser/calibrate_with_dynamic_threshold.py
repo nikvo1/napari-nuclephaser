@@ -436,7 +436,7 @@ def extract_detections_and_features(
         "min": 0,
         "max": 6,
         "value": 6,
-        "tooltip": "Maximum defocus strength that the model with adapt to. The bigger - the more resistant the model to defocus, but calibration will take longer.",
+        "tooltip": "Maximum defocus strength that the model with adapt to. The bigger - the more resistant the model to defocus, but calibration will take longer. 0 for skipping the adaptation to defocus",
     },
     Postprocess={
         "choices": ["GREEDYNMM", "NMS", "NMM"],
