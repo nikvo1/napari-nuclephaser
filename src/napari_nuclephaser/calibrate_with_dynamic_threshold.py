@@ -299,7 +299,8 @@ def match_points_to_boxes(points, boxes, confidences):
     rows, cols, costs = [], [], []
     for i, (py, px) in enumerate(points):
         pt = Point(px, py)
-        candidate_idxs = tree.query(pt, predicate="contains")
+        # Use 'intersects' instead of 'contains' to handle points on edges
+        candidate_idxs = tree.query(pt, predicate="intersects")
         for j in candidate_idxs:
             x1, x2, y1, y2 = boxes[j]
             if x1 <= px <= x2 and y1 <= py <= y2:
@@ -381,6 +382,7 @@ def extract_detections_and_features(
     match_metric,
     intersection_threshold,
     expand_scale=2.5,
+    debug=False,
 ):
     phase_rgb = cv2.cvtColor(tile_phase_gray, cv2.COLOR_GRAY2RGB)
     result = get_sliced_prediction(
@@ -398,6 +400,8 @@ def extract_detections_and_features(
     )
     detections = result.object_prediction_list
     if not detections:
+        if debug:
+            print(f"  No detections in tile (points: {len(points_in_tile)})")
         return pd.DataFrame()
 
     boxes_list = []
@@ -413,6 +417,12 @@ def extract_detections_and_features(
         confs.append(det.score.value)
 
     matched = match_points_to_boxes(points_in_tile, boxes_list, confs)
+    n_matches = sum(matched)
+
+    if debug:
+        print(
+            f"  Tile: {len(detections)} detections, {len(points_in_tile)} points, {n_matches} matches"
+        )
 
     rows = []
     for _idx, (bbox, conf, gt) in enumerate(
@@ -673,6 +683,8 @@ def calibrate_with_dynamic_threshold(
     samples_per_frame = defaultdict(list)
     tile_data_per_frame = defaultdict(list)
 
+    debug = True  # set to True for detailed output
+
     with progress(
         total=len(calib_data), desc="Calibration feature extraction"
     ) as pbar:
@@ -680,6 +692,10 @@ def calibrate_with_dynamic_threshold(
             frame = entry["frame_idx"]
             tile_gray = entry["tile_gray"]
             points = entry["points"]
+            if debug:
+                print(
+                    f"\nProcessing frame {frame}, tile with {len(points)} points"
+                )
             df = extract_detections_and_features(
                 tile_gray,
                 points,
@@ -690,34 +706,30 @@ def calibrate_with_dynamic_threshold(
                 Match_metric,
                 Intersection_threshold,
                 expand_scale=2.5,
+                debug=debug,
             )
             if not df.empty:
                 samples_per_frame[frame].append(df)
                 tile_data_per_frame[frame].append((tile_gray, points))
+                if debug:
+                    print(f"  Added {len(df)} samples to frame {frame}")
+            else:
+                if debug:
+                    print("  No samples generated for this tile")
             pbar.update(1)
-
-    # Combine per frame
+    # After combining per frame
     for frame in list(samples_per_frame.keys()):
         if samples_per_frame[frame]:
             samples_per_frame[frame] = pd.concat(
                 samples_per_frame[frame], ignore_index=True
             )
+            if debug:
+                print(
+                    f"Frame {frame} total samples: {len(samples_per_frame[frame])}, "
+                    f"TP: {samples_per_frame[frame]['ground_truth'].sum()}"
+                )
         else:
             del samples_per_frame[frame]
-
-    if not samples_per_frame:
-        show_error("No detections found in calibration tiles.")
-        return None
-
-    # Check total samples before balancing
-    total_samples = sum(len(df) for df in samples_per_frame.values())
-    if total_samples == 0:
-        show_error(
-            "No training samples were extracted. Check that the model detects objects and points overlap with detections."
-        )
-        return None
-
-    print(f"Total samples before balancing: {total_samples}")
 
     # ---------- Balance true positives across frames using rotations (as needed) ----------
     print("Balancing true positives across frames...")
