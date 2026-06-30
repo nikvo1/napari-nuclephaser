@@ -285,7 +285,7 @@ def extract_all_features(
     }
 
 
-def match_points_to_boxes(points, boxes, confidences, debug=False):
+def match_points_to_boxes(points, boxes, confidences, debug=True):
     N = len(points)
     M = len(boxes)
     if N == 0 or M == 0:
