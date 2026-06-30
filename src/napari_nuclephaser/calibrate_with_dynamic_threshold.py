@@ -1036,9 +1036,9 @@ def calibrate_with_dynamic_threshold(
         )
         mape = mape_per_sigma.get(sigma, np.nan)
         ax.set_title(
-            f"Sigma = {sigma}\nMAPE = {mape:.2f}%"
+            f"Blur strength = {sigma}\nMAPE = {mape:.2f}%"
             if not np.isnan(mape)
-            else f"Sigma = {sigma}\nMAPE = N/A"
+            else f"Blur strength = {sigma}\nMAPE = N/A"
         )
         ax.legend(title="Frame", bbox_to_anchor=(1.05, 1), loc="upper left")
         plot_path = os.path.join(dynamic_folder, f"scatter_sigma_{sigma}.png")
@@ -1059,7 +1059,7 @@ Match metric: {Match_metric}
 Intersection threshold: {Intersection_threshold}
 SAHI size: {Sahi_size}
 SAHI overlap: {Sahi_overlap}
-Blur max sigma: {Max_blur_strength} (sigmas tested: {sigmas})
+Maximum blur strength: {Max_blur_strength} (blur strengths tested: {sigmas})
 
 --- Training details ---
 Number of frames used for calibration: {len(samples_per_frame)}
@@ -1082,7 +1082,7 @@ Validation F1 score: {val_f1:.4f}
 Per-sigma MAPE (over tiles with gt>0):
 """
     for sigma, mape in mape_per_sigma.items():
-        metadata += f"  Sigma {sigma}: {mape:.2f}%\n"
+        metadata += f"  Blur strength {sigma}: {mape:.2f}%\n"
 
     metadata_path = os.path.join(dynamic_folder, "metadata.txt")
     with open(metadata_path, "w", encoding="utf-8") as f:
@@ -1093,5 +1093,5 @@ Per-sigma MAPE (over tiles with gt>0):
 
     summary = f"Dynamic threshold calibrated. Best tree: {grid_search.best_params_}\n"
     for sigma, mape in mape_per_sigma.items():
-        summary += f"Sigma {sigma} MAPE: {mape:.2f}%\n"
+        summary += f"Blur strength {sigma} MAPE: {mape:.2f}%\n"
     return summary
