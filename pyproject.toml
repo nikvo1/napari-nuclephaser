@@ -40,7 +40,8 @@ dependencies = ["setuptools==80.10.2",
 		"openpyxl",
 		"seaborn",
 		"opencv-python",
-		"imagecodecs"]
+		"imagecodecs",
+        "scikit-learn"]
 
 [project.optional-dependencies]
 testing = [
