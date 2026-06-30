@@ -285,7 +285,7 @@ def extract_all_features(
     }
 
 
-def match_points_to_boxes(points, boxes, confidences, debug=True):
+def match_points_to_boxes(points, boxes, confidences):
     N = len(points)
     M = len(boxes)
     if N == 0 or M == 0:
@@ -296,23 +296,12 @@ def match_points_to_boxes(points, boxes, confidences, debug=True):
     box_geoms = [box(x1, y1, x2, y2) for (x1, x2, y1, y2) in boxes]
     tree = STRtree(box_geoms)
 
-    if debug:
-        print(f"    Matching: {N} points, {M} boxes")
-        if N > 0 and M > 0:
-            print(f"    First point: ({points[0][1]}, {points[0][0]})")
-            print(f"    First box: {boxes[0]}")
-
     BIG = 100.0
-    # Cost matrix: N rows (points), M+N columns (M real boxes + N dummy columns)
     cost_matrix = np.full((N, M + N), BIG)
 
     for i, (py, px) in enumerate(points):
         pt = Point(px, py)
         candidate_idxs = tree.query(pt, predicate="intersects")
-        if debug and i < 5:
-            print(
-                f"    Point {i} ({px},{py}) -> {len(candidate_idxs)} candidates"
-            )
         for j in candidate_idxs:
             x1, x2, y1, y2 = boxes[j]
             if x1 <= px <= x2 and y1 <= py <= y2:
@@ -326,25 +315,7 @@ def match_points_to_boxes(points, boxes, confidences, debug=True):
                 cost = 0.5 * norm_dist + 0.5 * conf_cost
                 cost_matrix[i, j] = cost
 
-    if debug:
-        n_edges = np.sum(cost_matrix[:, :M] < BIG)
-        print(f"    Total candidate edges: {n_edges}")
-
-    # Solve assignment (rectangular, rows < columns)
     row_ind, col_ind = linear_sum_assignment(cost_matrix)
-
-    if debug:
-        print("    Assignment (point -> column):")
-        for i in range(min(N, 10)):
-            j = col_ind[i]
-            if j < M:
-                print(
-                    f"      Point {i} -> box {j}, cost = {cost_matrix[i, j]}"
-                )
-            else:
-                print(
-                    f"      Point {i} -> dummy column {j}, cost = {cost_matrix[i, j]}"
-                )
 
     matched_boxes = [0] * M
     for i in range(N):
@@ -394,7 +365,6 @@ def extract_detections_and_features(
     match_metric,
     intersection_threshold,
     expand_scale=2.5,
-    debug=False,
 ):
     phase_rgb = cv2.cvtColor(tile_phase_gray, cv2.COLOR_GRAY2RGB)
     result = get_sliced_prediction(
@@ -412,8 +382,6 @@ def extract_detections_and_features(
     )
     detections = result.object_prediction_list
     if not detections:
-        if debug:
-            print(f"  No detections in tile (points: {len(points_in_tile)})")
         return pd.DataFrame()
 
     boxes_list = []
@@ -429,12 +397,6 @@ def extract_detections_and_features(
         confs.append(det.score.value)
 
     matched = match_points_to_boxes(points_in_tile, boxes_list, confs)
-    n_matches = sum(matched)
-
-    if debug:
-        print(
-            f"  Tile: {len(detections)} detections, {len(points_in_tile)} points, {n_matches} matches"
-        )
 
     rows = []
     for _idx, (bbox, conf, gt) in enumerate(
@@ -695,8 +657,6 @@ def calibrate_with_dynamic_threshold(
     samples_per_frame = defaultdict(list)
     tile_data_per_frame = defaultdict(list)
 
-    debug = True  # set to True for detailed output
-
     with progress(
         total=len(calib_data), desc="Calibration feature extraction"
     ) as pbar:
@@ -704,10 +664,6 @@ def calibrate_with_dynamic_threshold(
             frame = entry["frame_idx"]
             tile_gray = entry["tile_gray"]
             points = entry["points"]
-            if debug:
-                print(
-                    f"\nProcessing frame {frame}, tile with {len(points)} points"
-                )
             df = extract_detections_and_features(
                 tile_gray,
                 points,
@@ -718,30 +674,32 @@ def calibrate_with_dynamic_threshold(
                 Match_metric,
                 Intersection_threshold,
                 expand_scale=2.5,
-                debug=debug,
             )
             if not df.empty:
                 samples_per_frame[frame].append(df)
                 tile_data_per_frame[frame].append((tile_gray, points))
-                if debug:
-                    print(f"  Added {len(df)} samples to frame {frame}")
-            else:
-                if debug:
-                    print("  No samples generated for this tile")
             pbar.update(1)
-    # After combining per frame
+
+    # Combine per frame
     for frame in list(samples_per_frame.keys()):
         if samples_per_frame[frame]:
             samples_per_frame[frame] = pd.concat(
                 samples_per_frame[frame], ignore_index=True
             )
-            if debug:
-                print(
-                    f"Frame {frame} total samples: {len(samples_per_frame[frame])}, "
-                    f"TP: {samples_per_frame[frame]['ground_truth'].sum()}"
-                )
         else:
             del samples_per_frame[frame]
+
+    if not samples_per_frame:
+        show_error("No detections found in calibration tiles.")
+        return None
+
+    # Check total samples before balancing
+    total_samples = sum(len(df) for df in samples_per_frame.values())
+    if total_samples == 0:
+        show_error(
+            "No training samples were extracted. Check that the model detects objects and points overlap with detections."
+        )
+        return None
 
     # ---------- Balance true positives across frames using rotations (as needed) ----------
     print("Balancing true positives across frames...")
@@ -802,7 +760,6 @@ def calibrate_with_dynamic_threshold(
     tp = full_df[full_df["ground_truth"] == 1]
     fp = full_df[full_df["ground_truth"] == 0]
 
-    # If there are no true positives or no false positives, we cannot balance meaningfully.
     if len(tp) == 0:
         show_error(
             "No true positive samples found. Check point-to-box matching."
@@ -822,6 +779,7 @@ def calibrate_with_dynamic_threshold(
     print(
         f"Balanced training set size: {len(balanced_df)} (TP: {len(tp)}, FP: {len(fp)})"
     )
+
     # ---------- Train decision tree ----------
     feature_cols = [
         "confidence",
