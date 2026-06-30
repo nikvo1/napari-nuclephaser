@@ -423,7 +423,6 @@ def extract_detections_and_features(
     return pd.DataFrame(rows)
 
 
-# ---------- Main widget ----------
 @magic_factory(
     Division_size={
         "max": 100000,
@@ -674,7 +673,6 @@ def calibrate_with_dynamic_threshold(
             tile_data_per_frame[frame].append((tile_gray, points))
 
             for sigma in sigmas:
-                # Deterministic augmentation per (frame, sigma) to ensure reproducibility
                 np.random.seed(Random_seed + sigma + frame)
                 aug_tile = apply_random_augmentations(
                     tile_gray, gamma_range=(0.5, 1.5)
@@ -696,15 +694,56 @@ def calibrate_with_dynamic_threshold(
                     samples_per_frame[frame].append(df)
                 pbar.update(1)
 
+    # ---------- Combine per frame into DataFrames (with safety checks) ----------
+    print("Combining samples per frame...")
+    for frame in list(samples_per_frame.keys()):
+        # If it's already a DataFrame, skip
+        if isinstance(samples_per_frame[frame], pd.DataFrame):
+            continue
+        # If it's a list of DataFrames, concatenate
+        if (
+            isinstance(samples_per_frame[frame], list)
+            and samples_per_frame[frame]
+        ):
+            samples_per_frame[frame] = pd.concat(
+                samples_per_frame[frame], ignore_index=True
+            )
+        else:
+            # Empty list or unexpected type -> remove
+            del samples_per_frame[frame]
+
+    # Final safety: ensure all values are DataFrames and not empty
+    for frame in list(samples_per_frame.keys()):
+        if (
+            not isinstance(samples_per_frame[frame], pd.DataFrame)
+            or samples_per_frame[frame].empty
+        ):
+            del samples_per_frame[frame]
+
+    if not samples_per_frame:
+        show_error("No detections found in calibration tiles.")
+        return None
+
     # ---------- Balance true positives across frames using rotations (as needed) ----------
     print("Balancing true positives across frames...")
-    tp_counts = {
-        frame: df["ground_truth"].sum()
-        for frame, df in samples_per_frame.items()
-    }
+    # Compute TP counts safely
+    tp_counts = {}
+    for frame, df in samples_per_frame.items():
+        if isinstance(df, pd.DataFrame):
+            tp_counts[frame] = df["ground_truth"].sum()
+        else:
+            # Should not happen after the safety checks, but just in case
+            del samples_per_frame[frame]
+
+    if not tp_counts:
+        show_error("No valid frames with samples for balancing.")
+        return None
+
     max_tp = max(tp_counts.values())
 
     for frame, df in list(samples_per_frame.items()):
+        if not isinstance(df, pd.DataFrame):
+            continue
         current_tp = tp_counts[frame]
         if current_tp >= max_tp:
             continue
@@ -717,11 +756,8 @@ def calibrate_with_dynamic_threshold(
                 rot_tile, rot_points = rotate_tile_and_points(
                     tile_gray, points, angle
                 )
-                # For each sigma, apply blur and extract features
                 for sigma in sigmas:
-                    np.random.seed(
-                        Random_seed + sigma + frame + angle
-                    )  # deterministic
+                    np.random.seed(Random_seed + sigma + frame + angle)
                     aug_rot = apply_random_augmentations(
                         rot_tile, gamma_range=(0.5, 1.5)
                     )
@@ -753,10 +789,15 @@ def calibrate_with_dynamic_threshold(
             samples_per_frame[frame] = pd.concat(
                 [df, new_df], ignore_index=True
             )
+            # Update tp_counts for this frame
+            tp_counts[frame] = samples_per_frame[frame]["ground_truth"].sum()
 
-    # Downsample TP per frame to max_tp
-    for frame in samples_per_frame:
+    # Downsample TP per frame to max_tp (if overshoot)
+    for frame in list(samples_per_frame.keys()):
         df = samples_per_frame[frame]
+        if not isinstance(df, pd.DataFrame):
+            del samples_per_frame[frame]
+            continue
         tp_df = df[df["ground_truth"] == 1]
         fp_df = df[df["ground_truth"] == 0]
         if len(tp_df) > max_tp:
@@ -764,7 +805,12 @@ def calibrate_with_dynamic_threshold(
         samples_per_frame[frame] = pd.concat([tp_df, fp_df], ignore_index=True)
 
     # Combine all frames and balance classes globally
-    all_dfs = list(samples_per_frame.values())
+    all_dfs = [
+        df for df in samples_per_frame.values() if isinstance(df, pd.DataFrame)
+    ]
+    if not all_dfs:
+        show_error("No valid DataFrames after balancing.")
+        return None
     full_df = pd.concat(all_dfs, ignore_index=True)
     tp = full_df[full_df["ground_truth"] == 1]
     fp = full_df[full_df["ground_truth"] == 0]
@@ -1018,8 +1064,9 @@ Number of false positives used: {len(fp)}
 Per-frame TP counts after balancing:
 """
     for frame, df in samples_per_frame.items():
-        tp_count = df["ground_truth"].sum()
-        metadata += f"  Frame {frame}: {tp_count} TP samples\n"
+        if isinstance(df, pd.DataFrame):
+            tp_count = df["ground_truth"].sum()
+            metadata += f"  Frame {frame}: {tp_count} TP samples\n"
 
     metadata += f"""
 Best hyperparameters: {grid_search.best_params_}
