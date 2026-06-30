@@ -423,6 +423,50 @@ def extract_detections_and_features(
     return pd.DataFrame(rows)
 
 
+def save_debug_rotation_image(
+    tile_gray,
+    points,
+    boxes,
+    matched_boxes,
+    output_path,
+    angle_deg,
+    sigma,
+):
+    """
+    Save a debug image showing rotated tile, ground‑truth points (green),
+    all detection boxes (blue), and matched boxes (red).
+    """
+    # Convert grayscale to BGR for drawing
+    img_color = cv2.cvtColor(tile_gray, cv2.COLOR_GRAY2BGR)
+
+    # Draw all detection boxes in blue
+    for x1, x2, y1, y2 in boxes:
+        cv2.rectangle(img_color, (x1, y1), (x2, y2), (255, 0, 0), 1)
+
+    # Draw matched boxes in red
+    for idx, matched in enumerate(matched_boxes):
+        if matched:
+            x1, x2, y1, y2 = boxes[idx]
+            cv2.rectangle(img_color, (x1, y1), (x2, y2), (0, 0, 255), 2)
+
+    # Draw ground‑truth points in green
+    for py, px in points:
+        cv2.circle(img_color, (int(px), int(py)), 3, (0, 255, 0), -1)
+
+    # Add text with angle and sigma
+    cv2.putText(
+        img_color,
+        f"Rotation {angle_deg}°, Sigma {sigma}",
+        (10, 20),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        (255, 255, 255),
+        1,
+    )
+
+    cv2.imwrite(output_path, img_color)
+
+
 @magic_factory(
     Division_size={
         "max": 100000,
@@ -732,7 +776,6 @@ def calibrate_with_dynamic_threshold(
         if isinstance(df, pd.DataFrame):
             tp_counts[frame] = df["ground_truth"].sum()
         else:
-            # Should not happen after the safety checks, but just in case
             del samples_per_frame[frame]
 
     if not tp_counts:
@@ -741,56 +784,129 @@ def calibrate_with_dynamic_threshold(
 
     max_tp = max(tp_counts.values())
 
-    for frame, df in list(samples_per_frame.items()):
-        if not isinstance(df, pd.DataFrame):
-            continue
-        current_tp = tp_counts[frame]
-        if current_tp >= max_tp:
-            continue
+    # Estimate total steps for progress bar
+    total_rotation_steps = 0
+    for frame, df in samples_per_frame.items():
+        if isinstance(df, pd.DataFrame) and tp_counts[frame] < max_tp:
+            total_rotation_steps += (
+                len(tile_data_per_frame[frame]) * len(sigmas) * 3
+            )  # 3 angles
 
-        added_dfs = []
-        for angle in [90, 180, 270]:
+    # Debug flag – set to True to save the first rotated tile
+    DEBUG_ROTATION = True
+    debug_saved = False
+
+    with progress(
+        total=total_rotation_steps, desc="Rotation balancing"
+    ) as pbar:
+        for frame, df in list(samples_per_frame.items()):
+            if not isinstance(df, pd.DataFrame):
+                continue
+            current_tp = tp_counts[frame]
             if current_tp >= max_tp:
-                break
-            for tile_gray, points in tile_data_per_frame[frame]:
-                rot_tile, rot_points = rotate_tile_and_points(
-                    tile_gray, points, angle
-                )
-                for sigma in sigmas:
-                    np.random.seed(Random_seed + sigma + frame + angle)
-                    aug_rot = apply_random_augmentations(
-                        rot_tile, gamma_range=(0.5, 1.5)
-                    )
-                    blurred = blur_image(aug_rot, sigma)
-                    df_rot = extract_detections_and_features(
-                        blurred,
-                        rot_points,
-                        phase_model_low,
-                        Sahi_size,
-                        Sahi_overlap,
-                        Postprocess,
-                        Match_metric,
-                        Intersection_threshold,
-                        expand_scale=2.5,
-                    )
-                    if not df_rot.empty:
-                        rot_tp = df_rot["ground_truth"].sum()
-                        added_dfs.append(df_rot)
-                        current_tp += rot_tp
-                        if current_tp >= max_tp:
-                            break
+                continue
+
+            added_dfs = []
+            for angle in [90, 180, 270]:
                 if current_tp >= max_tp:
                     break
-            if current_tp >= max_tp:
-                break
+                for tile_gray, points in tile_data_per_frame[frame]:
+                    rot_tile, rot_points = rotate_tile_and_points(
+                        tile_gray, points, angle
+                    )
 
-        if added_dfs:
-            new_df = pd.concat(added_dfs, ignore_index=True)
-            samples_per_frame[frame] = pd.concat(
-                [df, new_df], ignore_index=True
-            )
-            # Update tp_counts for this frame
-            tp_counts[frame] = samples_per_frame[frame]["ground_truth"].sum()
+                    # Debug: save the first rotated tile with points and matched boxes
+                    if DEBUG_ROTATION and not debug_saved:
+                        # Run detection once with sigma=0 to get boxes and matches
+                        # We'll use extract_detections_and_features but it only returns DataFrame,
+                        # so we'll call detection separately.
+                        phase_rgb = cv2.cvtColor(rot_tile, cv2.COLOR_GRAY2RGB)
+                        result = get_sliced_prediction(
+                            phase_rgb,
+                            phase_model_low,
+                            slice_height=Sahi_size,
+                            slice_width=Sahi_size,
+                            overlap_height_ratio=Sahi_overlap,
+                            overlap_width_ratio=Sahi_overlap,
+                            postprocess_type=Postprocess,
+                            postprocess_match_metric=Match_metric,
+                            postprocess_match_threshold=Intersection_threshold,
+                            verbose=0,
+                            force_postprocess_type=True,
+                        )
+                        dets = result.object_prediction_list
+                        boxes_list = []
+                        confs = []
+                        for det in dets:
+                            x1, x2, y1, y2 = (
+                                int(det.bbox.minx),
+                                int(det.bbox.maxx),
+                                int(det.bbox.miny),
+                                int(det.bbox.maxy),
+                            )
+                            boxes_list.append((x1, x2, y1, y2))
+                            confs.append(det.score.value)
+                        matched_boxes = match_points_to_boxes(
+                            rot_points, boxes_list, confs
+                        )
+
+                        # Create debug folder
+                        debug_folder = os.path.join(Save_folder, "debug")
+                        os.makedirs(debug_folder, exist_ok=True)
+                        debug_path = os.path.join(
+                            debug_folder,
+                            f"first_rotation_frame{frame}_angle{angle}_sigma0.png",
+                        )
+                        save_debug_rotation_image(
+                            rot_tile,
+                            rot_points,
+                            boxes_list,
+                            matched_boxes,
+                            debug_path,
+                            angle,
+                            0,
+                        )
+                        debug_saved = True
+
+                    # Now process all sigmas for this rotated tile
+                    for sigma in sigmas:
+                        np.random.seed(Random_seed + sigma + frame + angle)
+                        aug_rot = apply_random_augmentations(
+                            rot_tile, gamma_range=(0.5, 1.5)
+                        )
+                        blurred = blur_image(aug_rot, sigma)
+                        df_rot = extract_detections_and_features(
+                            blurred,
+                            rot_points,
+                            phase_model_low,
+                            Sahi_size,
+                            Sahi_overlap,
+                            Postprocess,
+                            Match_metric,
+                            Intersection_threshold,
+                            expand_scale=2.5,
+                        )
+                        if not df_rot.empty:
+                            rot_tp = df_rot["ground_truth"].sum()
+                            added_dfs.append(df_rot)
+                            current_tp += rot_tp
+                            if current_tp >= max_tp:
+                                break
+                        pbar.update(1)
+                    if current_tp >= max_tp:
+                        break
+                if current_tp >= max_tp:
+                    break
+
+            if added_dfs:
+                new_df = pd.concat(added_dfs, ignore_index=True)
+                samples_per_frame[frame] = pd.concat(
+                    [df, new_df], ignore_index=True
+                )
+                # Update tp_counts for this frame
+                tp_counts[frame] = samples_per_frame[frame][
+                    "ground_truth"
+                ].sum()
 
     # Downsample TP per frame to max_tp (if overshoot)
     for frame in list(samples_per_frame.keys()):
