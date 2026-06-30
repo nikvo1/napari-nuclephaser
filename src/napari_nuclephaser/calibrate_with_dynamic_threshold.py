@@ -1110,7 +1110,7 @@ def calibrate_with_dynamic_threshold(
     os.makedirs(dynamic_folder, exist_ok=True)
 
     # Save decision tree
-    model_path = os.path.join(dynamic_folder, "decision_tree.pkl")
+    model_path = os.path.join(dynamic_folder, "dynamic_threshold.pkl")
     with open(model_path, "wb") as f:
         pickle.dump(best_clf, f)
 
