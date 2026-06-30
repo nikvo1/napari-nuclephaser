@@ -652,54 +652,49 @@ def calibrate_with_dynamic_threshold(
         show_error("No calibration tiles found.")
         return None
 
-    # ---------- Calibration: extract features ----------
-    print("Extracting features from calibration tiles...")
+    # ---------- Calibration: extract features with blur augmentation ----------
+    print(
+        "Extracting features from calibration tiles (including blur augmentation)..."
+    )
     samples_per_frame = defaultdict(list)
-    tile_data_per_frame = defaultdict(list)
+    tile_data_per_frame = defaultdict(
+        list
+    )  # original tiles for rotation (stored once)
 
+    total_steps = len(calib_data) * len(sigmas)
     with progress(
-        total=len(calib_data), desc="Calibration feature extraction"
+        total=total_steps, desc="Calibration feature extraction"
     ) as pbar:
         for entry in calib_data:
             frame = entry["frame_idx"]
             tile_gray = entry["tile_gray"]
             points = entry["points"]
-            df = extract_detections_and_features(
-                tile_gray,
-                points,
-                phase_model_low,
-                Sahi_size,
-                Sahi_overlap,
-                Postprocess,
-                Match_metric,
-                Intersection_threshold,
-                expand_scale=2.5,
-            )
-            if not df.empty:
-                samples_per_frame[frame].append(df)
-                tile_data_per_frame[frame].append((tile_gray, points))
-            pbar.update(1)
 
-    # Combine per frame
-    for frame in list(samples_per_frame.keys()):
-        if samples_per_frame[frame]:
-            samples_per_frame[frame] = pd.concat(
-                samples_per_frame[frame], ignore_index=True
-            )
-        else:
-            del samples_per_frame[frame]
+            # Store original tile once for possible rotation later
+            tile_data_per_frame[frame].append((tile_gray, points))
 
-    if not samples_per_frame:
-        show_error("No detections found in calibration tiles.")
-        return None
+            for sigma in sigmas:
+                # Deterministic augmentation per (frame, sigma) to ensure reproducibility
+                np.random.seed(Random_seed + sigma + frame)
+                aug_tile = apply_random_augmentations(
+                    tile_gray, gamma_range=(0.5, 1.5)
+                )
+                blurred = blur_image(aug_tile, sigma)
 
-    # Check total samples before balancing
-    total_samples = sum(len(df) for df in samples_per_frame.values())
-    if total_samples == 0:
-        show_error(
-            "No training samples were extracted. Check that the model detects objects and points overlap with detections."
-        )
-        return None
+                df = extract_detections_and_features(
+                    blurred,
+                    points,
+                    phase_model_low,
+                    Sahi_size,
+                    Sahi_overlap,
+                    Postprocess,
+                    Match_metric,
+                    Intersection_threshold,
+                    expand_scale=2.5,
+                )
+                if not df.empty:
+                    samples_per_frame[frame].append(df)
+                pbar.update(1)
 
     # ---------- Balance true positives across frames using rotations (as needed) ----------
     print("Balancing true positives across frames...")
@@ -722,23 +717,37 @@ def calibrate_with_dynamic_threshold(
                 rot_tile, rot_points = rotate_tile_and_points(
                     tile_gray, points, angle
                 )
-                df_rot = extract_detections_and_features(
-                    rot_tile,
-                    rot_points,
-                    phase_model_low,
-                    Sahi_size,
-                    Sahi_overlap,
-                    Postprocess,
-                    Match_metric,
-                    Intersection_threshold,
-                    expand_scale=2.5,
-                )
-                if not df_rot.empty:
-                    rot_tp = df_rot["ground_truth"].sum()
-                    added_dfs.append(df_rot)
-                    current_tp += rot_tp
-                    if current_tp >= max_tp:
-                        break
+                # For each sigma, apply blur and extract features
+                for sigma in sigmas:
+                    np.random.seed(
+                        Random_seed + sigma + frame + angle
+                    )  # deterministic
+                    aug_rot = apply_random_augmentations(
+                        rot_tile, gamma_range=(0.5, 1.5)
+                    )
+                    blurred = blur_image(aug_rot, sigma)
+                    df_rot = extract_detections_and_features(
+                        blurred,
+                        rot_points,
+                        phase_model_low,
+                        Sahi_size,
+                        Sahi_overlap,
+                        Postprocess,
+                        Match_metric,
+                        Intersection_threshold,
+                        expand_scale=2.5,
+                    )
+                    if not df_rot.empty:
+                        rot_tp = df_rot["ground_truth"].sum()
+                        added_dfs.append(df_rot)
+                        current_tp += rot_tp
+                        if current_tp >= max_tp:
+                            break
+                if current_tp >= max_tp:
+                    break
+            if current_tp >= max_tp:
+                break
+
         if added_dfs:
             new_df = pd.concat(added_dfs, ignore_index=True)
             samples_per_frame[frame] = pd.concat(
