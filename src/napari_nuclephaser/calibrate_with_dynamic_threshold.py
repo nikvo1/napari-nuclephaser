@@ -821,8 +821,13 @@ def calibrate_with_dynamic_threshold(
         )
         return None
 
-    if len(fp) > len(tp):
+    # Balance classes globally: downsample the majority class to match the minority
+    if len(tp) > len(fp):
+        tp = tp.sample(n=len(fp), random_state=Random_seed)
+    elif len(fp) > len(tp):
         fp = fp.sample(n=len(tp), random_state=Random_seed)
+    # Now tp and fp have equal length
+
     balanced_df = pd.concat([tp, fp], ignore_index=True).sample(
         frac=1, random_state=Random_seed
     )
