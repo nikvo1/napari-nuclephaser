@@ -451,7 +451,7 @@ def extract_detections_and_features(
     Blur_max_sigma={
         "widget_type": "SpinBox",
         "min": 0,
-        "max": 20,
+        "max": 6,
         "value": 6,
         "tooltip": "Maximum sigma for Gaussian blur. Sigmas 0,1,...,max will be tested.",
     },
@@ -487,7 +487,7 @@ def calibrate_with_dynamic_threshold(
     viewer: napari.Viewer,
     Phase_model=first_model,
     Division_size=640,
-    Calibration_proportion=0.1,
+    Calibration_proportion=0.5,
     Blur_max_sigma=6,
     Save_folder=pathlib.Path(),
     Experiment_name="Experiment",
