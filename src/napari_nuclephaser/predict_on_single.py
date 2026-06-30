@@ -1,5 +1,6 @@
 import os
 import pathlib
+import pickle
 import re
 import warnings
 from datetime import datetime
@@ -90,23 +91,136 @@ AUGMENTATION_MAP = {
     "bilateral_10": (_bilateral_filter_10, 1.0),
     "sharpen": (_unsharp_mask, 1.0),
 }
-# ---------------------------------------------------------------------------
 
 
+# ---------- Feature extraction helpers (copied from calibrate_with_dynamic_threshold) ----------
+def expand_bbox(bbox, image_shape, scale=2.5):
+    x1, x2, y1, y2 = bbox
+    width = x2 - x1
+    height = y2 - y1
+    cx = (x1 + x2) / 2
+    cy = (y1 + y2) / 2
+    new_w = width * scale
+    new_h = height * scale
+    nx1 = int(cx - new_w / 2)
+    nx2 = int(cx + new_w / 2)
+    ny1 = int(cy - new_h / 2)
+    ny2 = int(cy + new_h / 2)
+    h, w = image_shape
+    nx1 = max(0, nx1)
+    ny1 = max(0, ny1)
+    nx2 = min(w, nx2)
+    ny2 = min(h, ny2)
+    return nx1, nx2, ny1, ny2
+
+
+def extract_features_grayscale(region):
+    flat = region.ravel().astype(np.float64)
+    h, w = region.shape
+    height_width = h / w if w > 0 else 0.0
+    mean = np.mean(flat)
+    std = np.std(flat)
+    median = np.median(flat)
+    p25 = np.percentile(flat, 25)
+    p75 = np.percentile(flat, 75)
+    iqr = p75 - p25
+    min_val = np.min(flat)
+    max_val = np.max(flat)
+    range_val = max_val - min_val
+    rms = np.sqrt(np.mean((flat - mean) ** 2))
+    lap = cv2.Laplacian(region, cv2.CV_64F, ksize=3)
+    lap_var = np.var(lap.ravel())
+    hist, _ = np.histogram(flat, bins=256, range=(0, 255))
+    hist = hist.astype(np.float64)
+    hist /= hist.sum() + 1e-12
+    entropy = -np.sum(hist * np.log2(hist + 1e-12))
+    energy = np.sum(flat**2)
+    return {
+        "height/width": height_width,
+        "mean": mean,
+        "std": std,
+        "median": median,
+        "p25": p25,
+        "p75": p75,
+        "iqr": iqr,
+        "min": min_val,
+        "max": max_val,
+        "range": range_val,
+        "rms_contrast": rms,
+        "lap_var": lap_var,
+        "entropy": entropy,
+        "energy": energy,
+    }
+
+
+def extract_all_features(
+    expanded_region, rel_x1, rel_y1, rel_x2, rel_y2, eps=1.0
+):
+    lap_expanded = cv2.Laplacian(expanded_region, cv2.CV_64F, ksize=3)
+    flat_img = expanded_region.ravel()
+    flat_lap = lap_expanded.ravel()
+
+    ctx_mean = np.mean(flat_img)
+    ctx_std = np.std(flat_img)
+    ctx_median = np.median(flat_img)
+    ctx_p25 = np.percentile(flat_img, 25)
+    ctx_p75 = np.percentile(flat_img, 75)
+    ctx_rms = np.sqrt(np.mean((flat_img - ctx_mean) ** 2))
+    ctx_lap_var = np.var(flat_lap)
+    hist, _ = np.histogram(flat_img, bins=256, range=(0, 255))
+    hist = hist.astype(np.float64)
+    hist /= hist.sum() + 1e-12
+    ctx_entropy = -np.sum(hist * np.log2(hist + 1e-12))
+
+    var_I = np.var(flat_img)
+    var_L = np.var(flat_lap)
+    focus_score = var_L / (var_I + eps) if (var_I + eps) > 0 else 0.0
+
+    original_region = expanded_region[rel_y1:rel_y2, rel_x1:rel_x2]
+    obj_feats = extract_features_grayscale(original_region)
+
+    rel_mean = obj_feats["mean"] - ctx_median
+    rel_median = obj_feats["median"] - ctx_median
+    rel_std = obj_feats["std"] / (ctx_std + 1e-6)
+    rel_contrast = obj_feats["rms_contrast"] - ctx_rms
+
+    return {
+        "height/width": obj_feats["height/width"],
+        "mean": obj_feats["mean"],
+        "std": obj_feats["std"],
+        "median": obj_feats["median"],
+        "p25": obj_feats["p25"],
+        "p75": obj_feats["p75"],
+        "iqr": obj_feats["iqr"],
+        "min": obj_feats["min"],
+        "max": obj_feats["max"],
+        "range": obj_feats["range"],
+        "rms_contrast": obj_feats["rms_contrast"],
+        "lap_var": obj_feats["lap_var"],
+        "entropy": obj_feats["entropy"],
+        "energy": obj_feats["energy"],
+        "context_mean": ctx_mean,
+        "context_std": ctx_std,
+        "context_median": ctx_median,
+        "context_p25": ctx_p25,
+        "context_p75": ctx_p75,
+        "context_rms_contrast": ctx_rms,
+        "context_lap_var": ctx_lap_var,
+        "context_entropy": ctx_entropy,
+        "relative_mean": rel_mean,
+        "relative_median": rel_median,
+        "relative_std": rel_std,
+        "relative_contrast": rel_contrast,
+        "focus": focus_score,
+    }
+
+
+# ---------- Metadata parsing (unchanged) ----------
 def _parse_metadata(metadata_path):
-    """Parse metadata.txt file and return:
-    - best_augmentations: list of augmentation names (e.g. ['native', 'median_3'])
-    - aug_thresholds: dict {aug_name: threshold}
-    - model_name: string (base name of model file)
-    """
     with open(metadata_path, encoding="utf-8") as f:
         content = f.read()
-
-    # Extract model name (e.g. "ND_v11n.pt")
     model_match = re.search(r"Phase model:\s+([^\s\(]+)", content)
     model_name = model_match.group(1) if model_match else None
-
-    # Extract best combination line
     combo_match = re.search(r"Best TTA combination:\s+(.+)", content)
     if not combo_match:
         raise ValueError(
@@ -114,10 +228,7 @@ def _parse_metadata(metadata_path):
         )
     combo_str = combo_match.group(1).strip()
     best_augmentations = [aug.strip() for aug in combo_str.split("+")]
-
-    # Extract per‑augmentation thresholds
     thresholds = {}
-    # Find the block starting with "Per‑augmentation calibrated thresholds:"
     threshold_block_match = re.search(
         r"Per‑augmentation calibrated thresholds:\s*\n((?:  .+:\s+[\d\.]+\n?)+)",
         content,
@@ -140,7 +251,6 @@ def _parse_metadata(metadata_path):
         raise ValueError(
             "Could not find per‑augmentation thresholds in metadata file."
         )
-
     return best_augmentations, thresholds, model_name
 
 
@@ -162,6 +272,15 @@ def _parse_metadata(metadata_path):
         "filter": "*.txt",
         "tooltip": "Metadata .txt file generated by calibrate_points.py (containing best augmentation combination and thresholds).",
     },
+    Use_dynamic_threshold={
+        "widget_type": "CheckBox",
+        "tooltip": "Use a decision tree to filter detections (requires a .pkl file from dynamic threshold calibration).",
+    },
+    Dynamic_threshold_pkl={
+        "mode": "r",
+        "filter": "*.pkl",
+        "tooltip": "Pickled decision tree (.pkl) from calibrate_with_dynamic_threshold.",
+    },
     ADVANCED_SETTINGS={},
     Generate_points={
         "tooltip": "If chosen, Points layer will be created with point at the center of bounding box for each detection"
@@ -176,7 +295,7 @@ def _parse_metadata(metadata_path):
         "tooltip": "Parameter that determines how many detections will model return. Use calibration widgets to determine optimal threshold for your use case."
     },
     Sahi_size={
-        "max": 100000,  # Default setting creates limit at 1000, this prevents it
+        "max": 100000,
         "tooltip": "Slicing window inference slice. The large image will be divided into small ones with this size in pixels. See obss/sahi library for more details",
     },
     Sahi_overlap={
@@ -221,6 +340,8 @@ def make_points(
     Show_confidence=False,
     Use_TTA=False,
     TTA_metadata_file=pathlib.Path(),
+    Use_dynamic_threshold=False,
+    Dynamic_threshold_pkl=pathlib.Path(),
     Save_result=False,
     Save_folder=pathlib.Path(),
     Experiment_name="Experiment",
@@ -236,7 +357,15 @@ def make_points(
     Bbox_thickness=5,
     Score_text_size=3,
 ) -> napari.types.LayerDataTuple:
-    """Takes a single-frame image, YOLO model, and optional TTA metadata -> adds point/bbox layers and saves averaged counts."""
+    """Takes a single-frame image, YOLO model, and optional TTA or dynamic threshold -> adds point/bbox layers and saves averaged/filtered counts."""
+    # ---------- Mutual exclusivity check ----------
+    if Use_TTA and Use_dynamic_threshold:
+        show_error(
+            "Using both TTA and dynamic threshold is not available. Please, choose one of these options."
+        )
+        return None
+
+    # ---------- Input validation and preprocessing ----------
     pic = Select_image.data
     if len(pic.shape) == 2:
         pic = cv2.cvtColor(pic, cv2.COLOR_GRAY2RGB)
@@ -254,7 +383,7 @@ def make_points(
 
     viewer.window._status_bar._toggle_activity_dock(True)
 
-    # ---- TTA mode ----
+    # ---------- TTA mode ----------
     if Use_TTA:
         if not TTA_metadata_file or not TTA_metadata_file.exists():
             show_error("TTA metadata file not found or not provided.")
@@ -265,7 +394,6 @@ def make_points(
             viewer.window._status_bar._toggle_activity_dock(False)
             return None
 
-        # Parse metadata
         try:
             best_augs, aug_thresholds, model_name_meta = _parse_metadata(
                 str(TTA_metadata_file)
@@ -275,18 +403,13 @@ def make_points(
             viewer.window._status_bar._toggle_activity_dock(False)
             return None
 
-        # Validate model name
         selected_model_name = pathlib.Path(Select_model).name
         if model_name_meta and selected_model_name != model_name_meta:
             show_info(
                 f"Warning: Selected model ({selected_model_name}) does not match model in metadata ({model_name_meta}). Continuing anyway."
             )
 
-        # For each augmentation in best combination, run inference
-        all_counts = (
-            []
-        )  # store detection count per augmentation (for averaging)
-        # Outer progress bar over augmentations
+        all_counts = []
         with progress(
             total=len(best_augs), desc="TTA augmentations"
         ) as pbar_augs:
@@ -298,19 +421,12 @@ def make_points(
                     pbar_augs.update(1)
                     continue
                 aug_func, scale_factor = AUGMENTATION_MAP[aug_name]
-                # Get threshold for this augmentation from metadata
-                thr = aug_thresholds.get(
-                    aug_name, Confidence_threshold
-                )  # fallback to user's threshold if missing
-                # Initialize model with this threshold (temporary)
+                thr = aug_thresholds.get(aug_name, Confidence_threshold)
                 model, _ = initialize_model(
                     str(Select_model), thr, cuda_available
                 )
 
-                # Apply augmentation to whole image
                 aug_img = aug_func(pic)
-                # Run sliced prediction with user's SAHI settings
-                # Create a progress callback for sliced prediction (nested)
                 pbar_inner = None
 
                 def progress_callback(current, total, aug_name=aug_name):
@@ -338,29 +454,22 @@ def make_points(
                     progress_callback=progress_callback,
                 )
                 result = result.to_coco_predictions()
-                # Transform points and bounding boxes back to original coordinates
                 points_aug = []
                 bboxes_aug = []
                 scores_aug = []
                 for instance in result:
-                    bbox = instance[
-                        "bbox"
-                    ]  # [x, y, width, height] in augmented image
+                    bbox = instance["bbox"]
                     score = instance["score"]
                     scores_aug.append(score)
 
-                    # Center point
                     if scale_factor != 1.0:
                         center_x = int((bbox[0] + bbox[2] // 2) * scale_factor)
                         center_y = int((bbox[1] + bbox[3] // 2) * scale_factor)
                     else:
                         center_x = int(bbox[0] + bbox[2] // 2)
                         center_y = int(bbox[1] + bbox[3] // 2)
-                    points_aug.append(
-                        [center_y, center_x]
-                    )  # napari uses (y, x)
+                    points_aug.append([center_y, center_x])
 
-                    # Bounding box rectangle
                     if scale_factor != 1.0:
                         x_orig = bbox[0] * scale_factor
                         y_orig = bbox[1] * scale_factor
@@ -372,11 +481,10 @@ def make_points(
                         w_orig = bbox[2]
                         h_orig = bbox[3]
 
-                    # Convert to napari polygon points (each point is (y, x))
-                    y1 = int(x_orig)  # row of top-left
-                    x1 = int(y_orig)  # col of top-left
-                    y2 = int(x_orig + w_orig)  # row of bottom-right
-                    x2 = int(y_orig + h_orig)  # col of bottom-right
+                    y1 = int(x_orig)
+                    x1 = int(y_orig)
+                    y2 = int(x_orig + w_orig)
+                    x2 = int(y_orig + h_orig)
                     polygon = np.array(
                         [[x1, y1], [x1, y2], [x2, y2], [x2, y1]]
                     )
@@ -384,7 +492,6 @@ def make_points(
 
                 n_cells = len(points_aug)
 
-                # Add points layer if requested
                 if Generate_points or (
                     not Generate_points and not Generate_bbox
                 ):
@@ -394,7 +501,6 @@ def make_points(
                         name=f"{n_cells} points ({aug_name}) {name}",
                     )
 
-                # Add bounding boxes layer if requested
                 if Generate_bbox:
                     properties = {"score": scores_aug}
                     if Show_confidence:
@@ -427,16 +533,13 @@ def make_points(
                 all_counts.append(n_cells)
                 pbar_augs.update(1)
 
-        # Compute average count across augmentations
         avg_count = np.mean(all_counts) if all_counts else 0
-        # Save results if requested
         if Save_result:
             from napari_nuclephaser.utils import create_unique_subfolder
 
             subfolder = create_unique_subfolder(
                 str(Save_folder), str(Experiment_name)
             )
-            # Create dataframe with a single row (since it's a single image)
             result_table = {"Frame": [name], "Count": [avg_count]}
             df = pd.DataFrame.from_dict(result_table)
             if Save_csv:
@@ -456,7 +559,6 @@ def make_points(
                     os.path.join(subfolder, f"{name}_TTA_averaged_counts.csv"),
                     index=False,
                 )
-            # Save metadata
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
             metadata = f"""Experiment time: {current_date}
 TTA prediction on single image
@@ -479,7 +581,266 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         viewer.window._status_bar._toggle_activity_dock(False)
         return None
 
-    # ---- Original (non‑TTA) mode ----
+    # ---------- Dynamic threshold mode ----------
+    if Use_dynamic_threshold:
+        if not Dynamic_threshold_pkl or not Dynamic_threshold_pkl.exists():
+            show_error(
+                "Dynamic threshold .pkl file not found or not provided."
+            )
+            viewer.window._status_bar._toggle_activity_dock(False)
+            return None
+
+        # Load the decision tree
+        with open(Dynamic_threshold_pkl, "rb") as f:
+            clf = pickle.load(f)
+
+        # Feature columns used during training (must match exactly)
+        feature_cols = [
+            "confidence",
+            "size",
+            "height/width",
+            "mean",
+            "std",
+            "median",
+            "p25",
+            "p75",
+            "iqr",
+            "min",
+            "max",
+            "range",
+            "rms_contrast",
+            "lap_var",
+            "entropy",
+            "energy",
+            "context_mean",
+            "context_std",
+            "context_median",
+            "context_p25",
+            "context_p75",
+            "context_rms_contrast",
+            "context_lap_var",
+            "context_entropy",
+            "relative_mean",
+            "relative_median",
+            "relative_std",
+            "relative_contrast",
+            "focus",
+        ]
+
+        # Run inference with confidence = 0.01 (ignoring user's threshold)
+        model, _ = initialize_model(str(Select_model), 0.01, cuda_available)
+
+        # Sliced prediction progress
+        pbar_slices = None
+
+        def progress_callback(current, total):
+            nonlocal pbar_slices
+            if pbar_slices is None:
+                pbar_slices = progress(total=total, desc="Sliced prediction")
+            pbar_slices.update(1)
+            if current == total:
+                pbar_slices.close()
+
+        result = get_sliced_prediction(
+            pic,
+            model,
+            slice_height=Sahi_size,
+            slice_width=Sahi_size,
+            overlap_height_ratio=Sahi_overlap,
+            overlap_width_ratio=Sahi_overlap,
+            postprocess_type=Postprocess,
+            postprocess_match_metric=Match_metric,
+            postprocess_match_threshold=Intersection_threshold,
+            force_postprocess_type=True,
+            progress_bar=False,
+            progress_callback=progress_callback,
+        )
+        detections = result.object_prediction_list
+        if not detections:
+            show_info("No detections found by the model.")
+            viewer.window._status_bar._toggle_activity_dock(False)
+            return None
+
+        # Extract features for each detection
+        print("Extracting features for dynamic threshold...")
+        rows = []
+        # Convert the image to grayscale once (for feature extraction)
+        if len(pic.shape) == 3:
+            gray = cv2.cvtColor(pic, cv2.COLOR_RGB2GRAY)
+        else:
+            gray = pic
+
+        with progress(
+            total=len(detections), desc="Feature extraction"
+        ) as pbar_feat:
+            for det in detections:
+                x1, x2, y1, y2 = (
+                    int(det.bbox.minx),
+                    int(det.bbox.maxx),
+                    int(det.bbox.miny),
+                    int(det.bbox.maxy),
+                )
+                bbox = (x1, x2, y1, y2)
+                # Expand bbox
+                exp_x1, exp_x2, exp_y1, exp_y2 = expand_bbox(
+                    bbox, gray.shape, scale=2.5
+                )
+                expanded = gray[exp_y1:exp_y2, exp_x1:exp_x2]
+                rel_x1 = x1 - exp_x1
+                rel_y1 = y1 - exp_y1
+                rel_x2 = x2 - exp_x1
+                rel_y2 = y2 - exp_y1
+                feats = extract_all_features(
+                    expanded, rel_x1, rel_y1, rel_x2, rel_y2
+                )
+                row = {
+                    "confidence": det.score.value,
+                    "size": (x2 - x1) * (y2 - y1),
+                    **feats,
+                }
+                rows.append(row)
+                pbar_feat.update(1)
+
+        if not rows:
+            show_info(
+                "No features extracted (possible issue with detection format)."
+            )
+            viewer.window._status_bar._toggle_activity_dock(False)
+            return None
+
+        df = pd.DataFrame(rows)
+        # Predict labels
+        X = df[feature_cols]
+        y_pred = clf.predict(X)
+        # Keep only detections with label 1
+        keep = y_pred == 1
+
+        # Filter detections
+        filtered_boxes = []
+        filtered_scores = []
+        filtered_points = []
+        for idx, det in enumerate(detections):
+            if keep[idx]:
+                x1, x2, y1, y2 = (
+                    int(det.bbox.minx),
+                    int(det.bbox.maxx),
+                    int(det.bbox.miny),
+                    int(det.bbox.maxy),
+                )
+                center_x = int((x1 + x2) / 2)
+                center_y = int((y1 + y2) / 2)
+                filtered_points.append([center_y, center_x])
+                filtered_boxes.append(
+                    np.array([[y1, x1], [y1, x2], [y2, x2], [y2, x1]])
+                )
+                filtered_scores.append(det.score.value)
+
+        n_filtered = len(filtered_points)
+
+        # Add layers
+        if Generate_points or (not Generate_points and not Generate_bbox):
+            viewer.add_points(
+                np.array(filtered_points),
+                size=Points_size,
+                name=f"{n_filtered} points (dynamic) {name}",
+            )
+
+        if Generate_bbox:
+            properties = {"score": filtered_scores}
+            if Show_confidence:
+                text_parameters = {
+                    "string": "{score:.2f}",
+                    "size": Score_text_size,
+                    "color": "red",
+                    "anchor": "upper_left",
+                    "translation": [-3, 0],
+                }
+                viewer.add_shapes(
+                    filtered_boxes,
+                    face_color="transparent",
+                    edge_color="red",
+                    edge_width=Bbox_thickness,
+                    properties=properties,
+                    text=text_parameters,
+                    name=f"{n_filtered} bounding boxes (dynamic) {name}",
+                )
+            else:
+                viewer.add_shapes(
+                    filtered_boxes,
+                    face_color="transparent",
+                    edge_color="red",
+                    edge_width=Bbox_thickness,
+                    properties=properties,
+                    name=f"{n_filtered} bounding boxes (dynamic) {name}",
+                )
+
+        # Save results if requested
+        if Save_result:
+            from napari_nuclephaser.utils import create_unique_subfolder
+
+            subfolder = create_unique_subfolder(
+                str(Save_folder), str(Experiment_name)
+            )
+            dynamic_folder = os.path.join(
+                subfolder, "Dynamic_Threshold_Results"
+            )
+            os.makedirs(dynamic_folder, exist_ok=True)
+
+            # Save count
+            result_table = {"Frame": [name], "Filtered_count": [n_filtered]}
+            df_res = pd.DataFrame.from_dict(result_table)
+            if Save_csv:
+                df_res.to_csv(
+                    os.path.join(dynamic_folder, f"{name}_dynamic_counts.csv"),
+                    index=False,
+                )
+            if Save_xlsx:
+                df_res.to_excel(
+                    os.path.join(
+                        dynamic_folder, f"{name}_dynamic_counts.xlsx"
+                    ),
+                    index=False,
+                )
+            if not Save_csv and not Save_xlsx:
+                df_res.to_csv(
+                    os.path.join(dynamic_folder, f"{name}_dynamic_counts.csv"),
+                    index=False,
+                )
+
+            # Save the decision tree used (copy)
+            import shutil
+
+            shutil.copy2(
+                Dynamic_threshold_pkl,
+                os.path.join(dynamic_folder, "dynamic_threshold_used.pkl"),
+            )
+
+            # Metadata
+            current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
+            metadata = f"""Experiment time: {current_date}
+Dynamic threshold prediction on single image
+Image napari name: {name}
+Detection model: {Select_model}
+Dynamic threshold .pkl file: {Dynamic_threshold_pkl.name}
+Number of detections before filtering: {len(detections)}
+Number of detections after filtering: {n_filtered}
+SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Postprocess}, match_metric={Match_metric}, iou_thr={Intersection_threshold}
+"""
+            metadata_path = os.path.join(
+                dynamic_folder, f"{name}_dynamic_metadata.txt"
+            )
+            with open(metadata_path, "w", encoding="utf-8") as f:
+                f.write(metadata)
+            show_info(f"Dynamic threshold results saved in {dynamic_folder}")
+        else:
+            show_info(
+                f"Dynamic threshold inference complete. Filtered count = {n_filtered}"
+            )
+
+        viewer.window._status_bar._toggle_activity_dock(False)
+        return None
+
+    # ---------- Original (non‑TTA, non‑dynamic) mode ----------
     initialization_pbar = progress(total=1, desc="Initializing model")
     print("Initializing model...")
     detection_model, model_type = initialize_model(
@@ -500,7 +861,6 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         pbar.update(1)
         if current == total:
             pbar.close()
-            # Note: we don't create a new progress bar for postprocessing here
 
     result = get_sliced_prediction(
         pic,
