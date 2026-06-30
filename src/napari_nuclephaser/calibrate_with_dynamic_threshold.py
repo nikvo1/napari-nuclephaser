@@ -298,11 +298,14 @@ def match_points_to_boxes(points, boxes, confidences, debug=True):
 
     if debug:
         print(f"    Matching: {N} points, {M} boxes")
-    if debug and N > 0 and M > 0:
-        print(f"    First point: ({points[0][1]}, {points[0][0]})")
-        print(f"    First box: {boxes[0]}")
+        if N > 0 and M > 0:
+            print(f"    First point: ({points[0][1]}, {points[0][0]})")
+            print(f"    First box: {boxes[0]}")
 
-    rows, cols, costs = [], [], []
+    BIG = 100.0
+    # Cost matrix: N rows (points), M+N columns (M real boxes + N dummy columns)
+    cost_matrix = np.full((N, M + N), BIG)
+
     for i, (py, px) in enumerate(points):
         pt = Point(px, py)
         candidate_idxs = tree.query(pt, predicate="intersects")
@@ -321,89 +324,27 @@ def match_points_to_boxes(points, boxes, confidences, debug=True):
                 conf = confidences[j] if confidences is not None else 1.0
                 conf_cost = 1.0 - conf
                 cost = 0.5 * norm_dist + 0.5 * conf_cost
-                rows.append(i)
-                cols.append(j)
-                costs.append(cost)
+                cost_matrix[i, j] = cost
 
     if debug:
-        print(f"    Total candidate edges: {len(rows)}")
+        n_edges = np.sum(cost_matrix[:, :M] < BIG)
+        print(f"    Total candidate edges: {n_edges}")
 
-    if not rows:
-        if debug:
-            print(
-                "    No candidates found via STRtree. Performing brute-force check on first point..."
-            )
-            if N > 0:
-                py, px = points[0]
-                for j, (x1, x2, y1, y2) in enumerate(boxes[:5]):
-                    inside = x1 <= px <= x2 and y1 <= py <= y2
-                    print(
-                        f"      Box {j}: ({x1},{y1})-({x2},{y2}) -> inside: {inside}"
-                    )
-        return [0] * M
-
-    BIG = 100.0
-    n_total = N + M
-    dense_cost = np.full((n_total, n_total), BIG)
-
-    # Set real point -> real box costs
-    for r, c, val in zip(rows, cols, costs, strict=False):
-        dense_cost[r, c] = val
-
-    # Dummy rows (for boxes) -> real box: cost 0 to allow box to be unmatched
-    for j in range(M):
-        dense_cost[N + j, j] = 0
-
-    # Real point -> dummy column (unmatched point): cost BIG to discourage unmatched points
-    for i in range(N):
-        dense_cost[i, M + i] = BIG
-
-    if debug and N > 0:
-        # Print costs for the first point
-        point_edges = [
-            (c, dense_cost[0, c]) for c in range(M) if dense_cost[0, c] < BIG
-        ]
-        print(f"    Costs for point 0: real edges = {point_edges}")
-        print(f"    Dummy cost for point 0 = {dense_cost[0, M]}")
-
-    row_ind, col_ind = linear_sum_assignment(dense_cost)
+    # Solve assignment (rectangular, rows < columns)
+    row_ind, col_ind = linear_sum_assignment(cost_matrix)
 
     if debug:
-        # Print assignment for first few points
         print("    Assignment (point -> column):")
         for i in range(min(N, 10)):
             j = col_ind[i]
             if j < M:
-                print(f"      Point {i} -> box {j}, cost = {dense_cost[i, j]}")
+                print(
+                    f"      Point {i} -> box {j}, cost = {cost_matrix[i, j]}"
+                )
             else:
                 print(
-                    f"      Point {i} -> dummy column {j}, cost = {dense_cost[i, j]}"
+                    f"      Point {i} -> dummy column {j}, cost = {cost_matrix[i, j]}"
                 )
-
-    matched_boxes = [0] * M
-    for i in range(N):
-        j = col_ind[i]
-        if j < M:
-            matched_boxes[j] = 1
-    return matched_boxes
-
-    BIG = 100.0
-    n_total = N + M
-    dense_cost = np.full((n_total, n_total), BIG)
-
-    # Real point -> real box cost (if they intersect)
-    for r, c, val in zip(rows, cols, costs, strict=False):
-        dense_cost[r, c] = val
-
-    # Dummy rows (for boxes) -> real box: cost 0 to allow a box to be unmatched
-    for j in range(M):
-        dense_cost[N + j, j] = 0
-
-    # Real point -> dummy column (unmatched point): cost BIG to discourage unmatched points
-    for i in range(N):
-        dense_cost[i, M + i] = BIG
-
-    row_ind, col_ind = linear_sum_assignment(dense_cost)
 
     matched_boxes = [0] * M
     for i in range(N):
