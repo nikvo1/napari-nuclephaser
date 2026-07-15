@@ -131,31 +131,31 @@ def blur_image(image: np.ndarray, sigma: float = 5.0) -> np.ndarray:
 def apply_random_augmentations(
     image, gamma_range=(0.7, 1.3), noise_sigma_range=(2, 15)
 ):
-    original_dtype = image.dtype
-    if np.issubdtype(original_dtype, np.integer):
-        img_float = image.astype(np.float32) / 255.0
-        max_intensity = 255.0
-    else:
-        img_float = image.astype(np.float32)
-        max_intensity = 1.0
-    img_float = np.clip(img_float, 0.0, 1.0)
+    # original_dtype = image.dtype
+    # if np.issubdtype(original_dtype, np.integer):
+    #     img_float = image.astype(np.float32) / 255.0
+    #     max_intensity = 255.0
+    # else:
+    #     img_float = image.astype(np.float32)
+    #     max_intensity = 1.0
+    # img_float = np.clip(img_float, 0.0, 1.0)
 
-    gamma = np.random.uniform(gamma_range[0], gamma_range[1])
-    img_gamma = np.power(img_float, gamma)
+    # gamma = np.random.uniform(gamma_range[0], gamma_range[1])
+    # img_gamma = np.power(img_float, gamma)
 
-    noise_sigma = np.random.uniform(noise_sigma_range[0], noise_sigma_range[1])
-    noise_sigma_normalized = noise_sigma / max_intensity
-    noise = np.random.normal(
-        loc=0.0, scale=noise_sigma_normalized, size=img_gamma.shape
-    )
-    img_noisy = img_gamma + noise
-    img_noisy = np.clip(img_noisy, 0.0, 1.0)
+    # noise_sigma = np.random.uniform(noise_sigma_range[0], noise_sigma_range[1])
+    # noise_sigma_normalized = noise_sigma / max_intensity
+    # noise = np.random.normal(
+    #     loc=0.0, scale=noise_sigma_normalized, size=img_gamma.shape
+    # )
+    # img_noisy = img_gamma + noise
+    # img_noisy = np.clip(img_noisy, 0.0, 1.0)
 
-    if np.issubdtype(original_dtype, np.integer):
-        img_out = (img_noisy * 255.0).astype(original_dtype)
-    else:
-        img_out = img_noisy.astype(original_dtype)
-    return img_out
+    # if np.issubdtype(original_dtype, np.integer):
+    #     img_out = (img_noisy * 255.0).astype(original_dtype)
+    # else:
+    #     img_out = img_noisy.astype(original_dtype)
+    return image
 
 
 def expand_bbox(bbox, image_shape, scale=2.5):
