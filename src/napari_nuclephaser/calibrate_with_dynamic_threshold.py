@@ -43,7 +43,7 @@ first_model = next((x for x in models_folder.iterdir() if x.is_file()), None)
 model_type_list = ("ultralytics", "yolov5", "yolov8", "yolov11", "yolo11")
 
 
-# ---------- Helpers (from original) ----------
+# ---------- Helpers (unchanged) ----------
 def _ensure_numpy(arr):
     if hasattr(arr, "__module__") and arr.__module__.startswith("dask"):
         return arr.compute()
@@ -131,30 +131,7 @@ def blur_image(image: np.ndarray, sigma: float = 5.0) -> np.ndarray:
 def apply_random_augmentations(
     image, gamma_range=(0.7, 1.3), noise_sigma_range=(2, 15)
 ):
-    # original_dtype = image.dtype
-    # if np.issubdtype(original_dtype, np.integer):
-    #     img_float = image.astype(np.float32) / 255.0
-    #     max_intensity = 255.0
-    # else:
-    #     img_float = image.astype(np.float32)
-    #     max_intensity = 1.0
-    # img_float = np.clip(img_float, 0.0, 1.0)
-
-    # gamma = np.random.uniform(gamma_range[0], gamma_range[1])
-    # img_gamma = np.power(img_float, gamma)
-
-    # noise_sigma = np.random.uniform(noise_sigma_range[0], noise_sigma_range[1])
-    # noise_sigma_normalized = noise_sigma / max_intensity
-    # noise = np.random.normal(
-    #     loc=0.0, scale=noise_sigma_normalized, size=img_gamma.shape
-    # )
-    # img_noisy = img_gamma + noise
-    # img_noisy = np.clip(img_noisy, 0.0, 1.0)
-
-    # if np.issubdtype(original_dtype, np.integer):
-    #     img_out = (img_noisy * 255.0).astype(original_dtype)
-    # else:
-    #     img_out = img_noisy.astype(original_dtype)
+    # Augmentations are currently disabled (return original)
     return image
 
 
@@ -290,15 +267,21 @@ def extract_all_features(
 
 
 def match_points_to_boxes(
-    points, boxes, confidences=None, expand_scale=1.05, max_norm_dist=0.5
+    points,
+    boxes,
+    confidences=None,
+    expand_scale=1.05,
+    max_norm_dist=0.5,
+    optimal_area=None,
 ):
     """
     Match ground truth points to detection boxes.
     - points: list of (y, x)
     - boxes: list of (x1, x2, y1, y2)  # x1<x2, y1<y2
-    - confidences: ignored for matching (can be None)
+    - confidences: list of float (0-1)
     - expand_scale: inflate box for inside test (handles boundary errors)
     - max_norm_dist: reject matches with normalized distance > this
+    - optimal_area: if provided, use size penalty in cost (area mode from frame)
     Returns: list of 0/1 for each box (1 if matched to a unique point)
     """
     N = len(points)
@@ -342,17 +325,96 @@ def match_points_to_boxes(
                 dist = np.hypot(px - cx, py - cy)
                 diag = np.hypot(x2 - x1, y2 - y1) + 1e-6
                 norm_dist = dist / diag
-                cost_matrix[i, j] = norm_dist  # pure geometric cost
+                conf = confidences[j] if confidences is not None else 1.0
+                conf_cost = 1.0 - conf
+
+                if optimal_area is not None:
+                    # Compute area penalty relative to optimal area
+                    area = (x2 - x1) * (y2 - y1)
+                    size_penalty = abs(area - optimal_area) / (
+                        optimal_area + 1e-6
+                    )
+                    # Weighted cost: 0.3 dist, 0.4 conf, 0.4 size
+                    cost = (
+                        0.3 * norm_dist + 0.4 * conf_cost + 0.4 * size_penalty
+                    )
+                else:
+                    # Original cost (equal weights)
+                    cost = 0.5 * norm_dist + 0.5 * conf_cost
+
+                cost_matrix[i, j] = cost
 
     # Hungarian assignment
     row_ind, col_ind = linear_sum_assignment(cost_matrix)
 
-    # Mark boxes that are matched with cost <= max_norm_dist
+    # Mark boxes that are matched with cost <= max_norm_dist (distance check still applies)
     matched_boxes = [0] * M
     for i, j in zip(row_ind, col_ind, strict=False):
         if cost_matrix[i, j] <= max_norm_dist:
             matched_boxes[j] = 1
     return matched_boxes
+
+
+def extract_detections_only(
+    tile_phase_gray,
+    phase_model,
+    sahi_size,
+    sahi_overlap,
+    postprocess,
+    match_metric,
+    intersection_threshold,
+    expand_scale=2.5,
+):
+    """
+    Run SAHI prediction and extract detection boxes, confidences, and features.
+    Does NOT perform point matching – returns a list of dictionaries.
+    """
+    phase_rgb = cv2.cvtColor(tile_phase_gray, cv2.COLOR_GRAY2RGB)
+    result = get_sliced_prediction(
+        phase_rgb,
+        phase_model,
+        slice_height=sahi_size,
+        slice_width=sahi_size,
+        overlap_height_ratio=sahi_overlap,
+        overlap_width_ratio=sahi_overlap,
+        postprocess_type=postprocess,
+        postprocess_match_metric=match_metric,
+        postprocess_match_threshold=intersection_threshold,
+        verbose=0,
+        force_postprocess_type=True,
+    )
+    detections = result.object_prediction_list
+    if not detections:
+        return []
+
+    dets = []
+    for det in detections:
+        x1, x2, y1, y2 = (
+            int(det.bbox.minx),
+            int(det.bbox.maxx),
+            int(det.bbox.miny),
+            int(det.bbox.maxy),
+        )
+        bbox = (x1, x2, y1, y2)
+        conf = det.score.value
+        # Extract features
+        exp_x1, exp_x2, exp_y1, exp_y2 = expand_bbox(
+            bbox, tile_phase_gray.shape, scale=expand_scale
+        )
+        expanded = tile_phase_gray[exp_y1:exp_y2, exp_x1:exp_x2]
+        rel_x1 = x1 - exp_x1
+        rel_y1 = y1 - exp_y1
+        rel_x2 = x2 - exp_x1
+        rel_y2 = y2 - exp_y1
+        feats = extract_all_features(expanded, rel_x1, rel_y1, rel_x2, rel_y2)
+        dets.append(
+            {
+                "box": bbox,
+                "confidence": conf,
+                "features": feats,
+            }
+        )
+    return dets
 
 
 def rotate_tile_and_points(tile, points, angle_deg):
@@ -383,74 +445,6 @@ def rotate_tile_and_points(tile, points, angle_deg):
         new_x = max(0, min(w - 1, int(round(new_x))))
         new_points.append((new_y, new_x))
     return rotated, new_points
-
-
-def extract_detections_and_features(
-    tile_phase_gray,
-    points_in_tile,
-    phase_model,
-    sahi_size,
-    sahi_overlap,
-    postprocess,
-    match_metric,
-    intersection_threshold,
-    expand_scale=2.5,
-):
-    phase_rgb = cv2.cvtColor(tile_phase_gray, cv2.COLOR_GRAY2RGB)
-    result = get_sliced_prediction(
-        phase_rgb,
-        phase_model,
-        slice_height=sahi_size,
-        slice_width=sahi_size,
-        overlap_height_ratio=sahi_overlap,
-        overlap_width_ratio=sahi_overlap,
-        postprocess_type=postprocess,
-        postprocess_match_metric=match_metric,
-        postprocess_match_threshold=intersection_threshold,
-        verbose=0,
-        force_postprocess_type=True,
-    )
-    detections = result.object_prediction_list
-    if not detections:
-        return pd.DataFrame()
-
-    boxes_list = []
-    confs = []
-    for det in detections:
-        x1, x2, y1, y2 = (
-            int(det.bbox.minx),
-            int(det.bbox.maxx),
-            int(det.bbox.miny),
-            int(det.bbox.maxy),
-        )
-        boxes_list.append((x1, x2, y1, y2))
-        confs.append(det.score.value)
-
-    matched = match_points_to_boxes(points_in_tile, boxes_list, confs)
-
-    rows = []
-    for _idx, (bbox, conf, gt) in enumerate(
-        zip(boxes_list, confs, matched, strict=False)
-    ):
-        x1, x2, y1, y2 = bbox
-        exp_x1, exp_x2, exp_y1, exp_y2 = expand_bbox(
-            bbox, tile_phase_gray.shape, scale=expand_scale
-        )
-        expanded = tile_phase_gray[exp_y1:exp_y2, exp_x1:exp_x2]
-        rel_x1 = x1 - exp_x1
-        rel_y1 = y1 - exp_y1
-        rel_x2 = x2 - exp_x1
-        rel_y2 = y2 - exp_y1
-        feats = extract_all_features(expanded, rel_x1, rel_y1, rel_x2, rel_y2)
-        row = {
-            "confidence": conf,
-            "size": (x2 - x1) * (y2 - y1),
-            "ground_truth": gt,
-            **feats,
-        }
-        rows.append(row)
-
-    return pd.DataFrame(rows)
 
 
 @magic_factory(
@@ -681,14 +675,12 @@ def calibrate_with_dynamic_threshold(
         show_error("No calibration tiles found.")
         return None
 
-    # ---------- Calibration: extract features with blur augmentation ----------
+    # ---------- NEW: Extract detections WITHOUT matching, store per frame ----------
     print(
         "Extracting features from calibration tiles (including blur augmentation)..."
     )
-    samples_per_frame = defaultdict(list)
-    tile_data_per_frame = defaultdict(
-        list
-    )  # original tiles for rotation (stored once)
+    # Each frame accumulates detections from all tiles and sigmas
+    frame_detections = defaultdict(list)
 
     total_steps = len(calib_data) * len(sigmas)
     with progress(
@@ -699,9 +691,6 @@ def calibrate_with_dynamic_threshold(
             tile_gray = entry["tile_gray"]
             points = entry["points"]
 
-            # Store original tile once for possible rotation later
-            tile_data_per_frame[frame].append((tile_gray, points))
-
             for sigma in sigmas:
                 np.random.seed(Random_seed + sigma + frame)
                 aug_tile = apply_random_augmentations(
@@ -709,9 +698,9 @@ def calibrate_with_dynamic_threshold(
                 )
                 blurred = blur_image(aug_tile, sigma)
 
-                df = extract_detections_and_features(
+                # Extract detections (no matching yet)
+                dets = extract_detections_only(
                     blurred,
-                    points,
                     phase_model_low,
                     Sahi_size,
                     Sahi_overlap,
@@ -720,135 +709,104 @@ def calibrate_with_dynamic_threshold(
                     Intersection_threshold,
                     expand_scale=2.5,
                 )
-                if not df.empty:
-                    samples_per_frame[frame].append(df)
+                for det in dets:
+                    det["tile_points"] = (
+                        points  # store points for later matching
+                    )
+                    frame_detections[frame].append(det)
                 pbar.update(1)
 
-    # ---------- Combine per frame into DataFrames (with safety checks) ----------
-    print("Combining samples per frame...")
-    for frame in list(samples_per_frame.keys()):
-        if isinstance(samples_per_frame[frame], pd.DataFrame):
+    if not frame_detections:
+        show_error("No detections found in any calibration tile.")
+        return None
+
+    # ---------- Compute optimal area per frame ----------
+    print(
+        "Computing optimal box area per frame (from top 10% confident detections)..."
+    )
+    optimal_areas = {}
+    for frame, dets in frame_detections.items():
+        if not dets:
             continue
-        if (
-            isinstance(samples_per_frame[frame], list)
-            and samples_per_frame[frame]
-        ):
-            samples_per_frame[frame] = pd.concat(
-                samples_per_frame[frame], ignore_index=True
-            )
+        # Sort by confidence descending
+        sorted_dets = sorted(dets, key=lambda d: d["confidence"], reverse=True)
+        top_n = max(1, int(0.1 * len(sorted_dets)))
+        top_dets = sorted_dets[:top_n]
+        # Compute areas for top detections
+        areas = []
+        for d in top_dets:
+            x1, x2, y1, y2 = d["box"]
+            area = (x2 - x1) * (y2 - y1)
+            areas.append(area)
+        if areas:
+            # Find mode by binning to nearest multiple of 10 (adjust bin width if needed)
+            binned = np.round(np.array(areas) / 10) * 10
+            from scipy.stats import mode as scipy_mode
+
+            mode_val = scipy_mode(binned, keepdims=False).mode
+            optimal_areas[frame] = float(mode_val)
         else:
-            del samples_per_frame[frame]
+            optimal_areas[frame] = np.median(areas) if areas else 0.0
 
-    for frame in list(samples_per_frame.keys()):
-        if (
-            not isinstance(samples_per_frame[frame], pd.DataFrame)
-            or samples_per_frame[frame].empty
-        ):
-            del samples_per_frame[frame]
+    print(f"Optimal areas per frame: {optimal_areas}")
 
-    if not samples_per_frame:
-        show_error("No detections found in calibration tiles.")
-        return None
+    # ---------- Match points to boxes using optimal area ----------
+    print("Matching points to boxes using optimal area...")
+    samples_per_frame = defaultdict(list)
 
-    # ---------- Balance true positives across frames using rotations (as needed) ----------
-    print("Balancing true positives across frames...")
-    tp_counts = {}
-    for frame, df in samples_per_frame.items():
-        if isinstance(df, pd.DataFrame):
-            tp_counts[frame] = df["ground_truth"].sum()
-        else:
-            del samples_per_frame[frame]
-
-    if not tp_counts:
-        show_error("No valid frames with samples for balancing.")
-        return None
-
-    max_tp = max(tp_counts.values())
-
-    total_rotation_steps = 0
-    for frame, df in samples_per_frame.items():
-        if isinstance(df, pd.DataFrame) and tp_counts[frame] < max_tp:
-            total_rotation_steps += (
-                len(tile_data_per_frame[frame]) * len(sigmas) * 3
-            )
-
-    with progress(
-        total=total_rotation_steps, desc="Rotation balancing"
-    ) as pbar:
-        for frame, df in list(samples_per_frame.items()):
-            if not isinstance(df, pd.DataFrame):
-                continue
-            current_tp = tp_counts[frame]
-            if current_tp >= max_tp:
-                continue
-
-            added_dfs = []
-            for angle in [90, 180, 270]:
-                if current_tp >= max_tp:
-                    break
-                for tile_gray, points in tile_data_per_frame[frame]:
-                    rot_tile, rot_points = rotate_tile_and_points(
-                        tile_gray, points, angle
-                    )
-
-                    for sigma in sigmas:
-                        np.random.seed(Random_seed + sigma + frame + angle)
-                        aug_rot = apply_random_augmentations(
-                            rot_tile, gamma_range=(0.5, 1.5)
-                        )
-                        blurred = blur_image(aug_rot, sigma)
-                        df_rot = extract_detections_and_features(
-                            blurred,
-                            rot_points,
-                            phase_model_low,
-                            Sahi_size,
-                            Sahi_overlap,
-                            Postprocess,
-                            Match_metric,
-                            Intersection_threshold,
-                            expand_scale=2.5,
-                        )
-                        if not df_rot.empty:
-                            rot_tp = df_rot["ground_truth"].sum()
-                            added_dfs.append(df_rot)
-                            current_tp += rot_tp
-                            if current_tp >= max_tp:
-                                break
-                        pbar.update(1)
-                    if current_tp >= max_tp:
-                        break
-                if current_tp >= max_tp:
-                    break
-
-            if added_dfs:
-                new_df = pd.concat(added_dfs, ignore_index=True)
-                samples_per_frame[frame] = pd.concat(
-                    [df, new_df], ignore_index=True
-                )
-                tp_counts[frame] = samples_per_frame[frame][
-                    "ground_truth"
-                ].sum()
-
-    # Downsample TP per frame to max_tp (if overshoot)
-    for frame in list(samples_per_frame.keys()):
-        df = samples_per_frame[frame]
-        if not isinstance(df, pd.DataFrame):
-            del samples_per_frame[frame]
+    for frame, dets in frame_detections.items():
+        if frame not in optimal_areas:
             continue
-        tp_df = df[df["ground_truth"] == 1]
-        fp_df = df[df["ground_truth"] == 0]
-        if len(tp_df) > max_tp:
-            tp_df = tp_df.sample(n=max_tp, random_state=Random_seed)
-        samples_per_frame[frame] = pd.concat([tp_df, fp_df], ignore_index=True)
+        opt_area = optimal_areas[frame]
+        # Group detections by tile (based on stored tile_points)
+        tile_groups = defaultdict(list)
+        for det in dets:
+            key = frozenset(det["tile_points"])
+            tile_groups[key].append(det)
 
-    # Combine all frames and balance classes globally
-    all_dfs = [
-        df for df in samples_per_frame.values() if isinstance(df, pd.DataFrame)
-    ]
-    if not all_dfs:
-        show_error("No valid DataFrames after balancing.")
+        for points_key, group_dets in tile_groups.items():
+            points = list(points_key)
+            if not points:
+                # No points in this tile → all detections are false positives
+                for det in group_dets:
+                    det["ground_truth"] = 0
+                    samples_per_frame[frame].append(det)
+                continue
+
+            boxes = [d["box"] for d in group_dets]
+            confs = [d["confidence"] for d in group_dets]
+            matched = match_points_to_boxes(
+                points,
+                boxes,
+                confs,
+                expand_scale=1.05,
+                max_norm_dist=0.5,
+                optimal_area=opt_area,
+            )
+            for det, gt in zip(group_dets, matched, strict=False):
+                det["ground_truth"] = gt
+                samples_per_frame[frame].append(det)
+
+    # Build DataFrame from matched detections
+    all_rows = []
+    for _, dets in samples_per_frame.items():
+        for det in dets:
+            row = {
+                "confidence": det["confidence"],
+                "size": (det["box"][1] - det["box"][0])
+                * (det["box"][3] - det["box"][2]),
+                "ground_truth": det["ground_truth"],
+                **det["features"],
+            }
+            all_rows.append(row)
+
+    if not all_rows:
+        show_error("No matching results after applying optimal area.")
         return None
-    full_df = pd.concat(all_dfs, ignore_index=True)
+
+    full_df = pd.DataFrame(all_rows)
+
+    # ---------- Balance classes globally ----------
     tp = full_df[full_df["ground_truth"] == 1]
     fp = full_df[full_df["ground_truth"] == 0]
 
@@ -858,7 +816,6 @@ def calibrate_with_dynamic_threshold(
         )
         return None
 
-    # Balance classes globally: downsample the majority class to match the minority
     if len(tp) > len(fp):
         tp = tp.sample(n=len(fp), random_state=Random_seed)
     elif len(fp) > len(tp):
@@ -941,8 +898,7 @@ def calibrate_with_dynamic_threshold(
         true_label = y_train_array[i]
         pred_label = oof_pred[i]
         is_correct = pred_label == true_label
-        keep = is_correct
-        keep_mask.append(keep)
+        keep_mask.append(is_correct)
 
     keep_mask = np.array(keep_mask)
     X_train_cleaned = X_train[keep_mask]
@@ -971,8 +927,7 @@ def calibrate_with_dynamic_threshold(
     y_val_pred = final_rf.predict(X_val)
     val_f1 = f1_score(y_val, y_val_pred)
 
-    # Close the calibration progress bar now that training is done
-    calib_pbar.close()
+    calib_pbar.close()  # close the 0/0 bar
 
     print("\n========== FINAL RESULTS ==========")
     print(f"Final model trained on {len(X_train_cleaned)} clean samples")
