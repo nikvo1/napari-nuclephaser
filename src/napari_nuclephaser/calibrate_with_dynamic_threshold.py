@@ -936,7 +936,7 @@ def calibrate_with_dynamic_threshold(
         f"Dropped {len(X_train) - len(X_train_cleaned)} samples ({(1 - len(X_train_cleaned)/len(X_train))*100:.1f}%)"
     )
 
-    min_samples_leaf_value = max(1, int(0.05 * len(X_train_cleaned)))
+    min_samples_leaf_value = max(1, int(0.03 * len(X_train_cleaned)))
     print(f"min_samples_leaf set to: {min_samples_leaf_value}")
 
     final_rf = RandomForestClassifier(
