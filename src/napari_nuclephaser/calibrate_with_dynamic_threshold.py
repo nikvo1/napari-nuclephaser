@@ -905,13 +905,13 @@ def calibrate_with_dynamic_threshold(
         method="predict",
     )
 
-    oof_proba = cross_val_predict(
-        temp_rf,
-        X_train,
-        y_train,
-        cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=Random_seed),
-        method="predict_proba",
-    )
+    # oof_proba = cross_val_predict(
+    #     temp_rf,
+    #     X_train,
+    #     y_train,
+    #     cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=Random_seed),
+    #     method="predict_proba",
+    # )
 
     y_train_array = y_train.values
     keep_mask = []
@@ -919,12 +919,12 @@ def calibrate_with_dynamic_threshold(
     for i in range(len(X_train)):
         true_label = y_train_array[i]
         pred_label = oof_pred[i]
-        prob_true = oof_proba[i][true_label]
+        # prob_true = oof_proba[i][true_label]
 
         is_correct = pred_label == true_label
-        is_confident = prob_true >= 0.6
+        # is_confident = prob_true >= 0.6
 
-        keep = is_correct and is_confident
+        keep = is_correct  # and is_confident
         keep_mask.append(keep)
 
     keep_mask = np.array(keep_mask)
