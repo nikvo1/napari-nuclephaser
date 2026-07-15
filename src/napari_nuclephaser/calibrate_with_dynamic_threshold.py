@@ -19,7 +19,7 @@ from napari.utils.notifications import show_error, show_info
 from sahi.predict import get_sliced_prediction
 from scipy.ndimage import gaussian_filter
 from scipy.optimize import linear_sum_assignment
-from shapely.geometry import box
+from shapely.geometry import Point, box
 from shapely.strtree import STRtree
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import f1_score
@@ -289,42 +289,68 @@ def extract_all_features(
     }
 
 
-def match_points_to_boxes(points, boxes, confidences):
+def match_points_to_boxes(
+    points, boxes, confidences=None, expand_scale=1.05, max_norm_dist=0.5
+):
+    """
+    Match ground truth points to detection boxes.
+    - points: list of (y, x)
+    - boxes: list of (x1, x2, y1, y2)  # x1<x2, y1<y2
+    - confidences: ignored for matching (can be None)
+    - expand_scale: inflate box for inside test (handles boundary errors)
+    - max_norm_dist: reject matches with normalized distance > this
+    Returns: list of 0/1 for each box (1 if matched to a unique point)
+    """
     N = len(points)
     M = len(boxes)
     if N == 0 or M == 0:
         return [0] * M
 
-    from shapely.geometry import Point
+    # Expand boxes for "inside" check (only for spatial query)
+    expanded_boxes = []
+    for x1, x2, y1, y2 in boxes:
+        w = x2 - x1
+        h = y2 - y1
+        cx = (x1 + x2) / 2
+        cy = (y1 + y2) / 2
+        new_w = w * expand_scale
+        new_h = h * expand_scale
+        ex1 = int(cx - new_w / 2)
+        ex2 = int(cx + new_w / 2)
+        ey1 = int(cy - new_h / 2)
+        ey2 = int(cy + new_h / 2)
+        expanded_boxes.append((ex1, ex2, ey1, ey2))
 
-    box_geoms = [box(x1, y1, x2, y2) for (x1, x2, y1, y2) in boxes]
+    # Build STRtree for fast query
+    box_geoms = [box(x1, y1, x2, y2) for (x1, x2, y1, y2) in expanded_boxes]
     tree = STRtree(box_geoms)
 
-    BIG = 100.0
-    cost_matrix = np.full((N, M + N), BIG)
+    # Cost matrix: N x M (no dummy columns)
+    cost_matrix = np.full((N, M), 1e9, dtype=np.float64)
 
     for i, (py, px) in enumerate(points):
         pt = Point(px, py)
         candidate_idxs = tree.query(pt, predicate="intersects")
         for j in candidate_idxs:
-            x1, x2, y1, y2 = boxes[j]
-            if x1 <= px <= x2 and y1 <= py <= y2:
+            ex1, ex2, ey1, ey2 = expanded_boxes[j]
+            # Check if point is inside expanded box (precise)
+            if ex1 <= px <= ex2 and ey1 <= py <= ey2:
+                # Original box (for distance to center)
+                x1, x2, y1, y2 = boxes[j]
                 cx = (x1 + x2) / 2
                 cy = (y1 + y2) / 2
-                dist = np.sqrt((px - cx) ** 2 + (py - cy) ** 2)
-                diag = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2) + 1e-6
+                dist = np.hypot(px - cx, py - cy)
+                diag = np.hypot(x2 - x1, y2 - y1) + 1e-6
                 norm_dist = dist / diag
-                conf = confidences[j] if confidences is not None else 1.0
-                conf_cost = 1.0 - conf
-                cost = 0.5 * norm_dist + 0.5 * conf_cost
-                cost_matrix[i, j] = cost
+                cost_matrix[i, j] = norm_dist  # pure geometric cost
 
+    # Hungarian assignment
     row_ind, col_ind = linear_sum_assignment(cost_matrix)
 
+    # Mark boxes that are matched with cost <= max_norm_dist
     matched_boxes = [0] * M
-    for i in range(N):
-        j = col_ind[i]
-        if j < M:
+    for i, j in zip(row_ind, col_ind, strict=False):
+        if cost_matrix[i, j] <= max_norm_dist:
             matched_boxes[j] = 1
     return matched_boxes
 
