@@ -876,6 +876,9 @@ def calibrate_with_dynamic_threshold(
     )
 
     # ---------- Train Random Forest with noise cleaning ----------
+    # Show a 0/0 progress bar while the classifier is being calibrated
+    calib_pbar = progress(total=0, desc="Calibrating dynamic threshold")
+
     feature_cols = [
         "confidence",
         "size",
@@ -931,26 +934,14 @@ def calibrate_with_dynamic_threshold(
         method="predict",
     )
 
-    # oof_proba = cross_val_predict(
-    #     temp_rf,
-    #     X_train,
-    #     y_train,
-    #     cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=Random_seed),
-    #     method="predict_proba",
-    # )
-
     y_train_array = y_train.values
     keep_mask = []
 
     for i in range(len(X_train)):
         true_label = y_train_array[i]
         pred_label = oof_pred[i]
-        # prob_true = oof_proba[i][true_label]
-
         is_correct = pred_label == true_label
-        # is_confident = prob_true >= 0.6
-
-        keep = is_correct  # and is_confident
+        keep = is_correct
         keep_mask.append(keep)
 
     keep_mask = np.array(keep_mask)
@@ -979,6 +970,9 @@ def calibrate_with_dynamic_threshold(
 
     y_val_pred = final_rf.predict(X_val)
     val_f1 = f1_score(y_val, y_val_pred)
+
+    # Close the calibration progress bar now that training is done
+    calib_pbar.close()
 
     print("\n========== FINAL RESULTS ==========")
     print(f"Final model trained on {len(X_train_cleaned)} clean samples")
@@ -1044,9 +1038,7 @@ def calibrate_with_dynamic_threshold(
                     if rows:
                         df_test = pd.DataFrame(rows)
                         X_test = df_test[feature_cols]
-                        y_pred = final_rf.predict(
-                            X_test
-                        )  # <-- changed from best_clf
+                        y_pred = final_rf.predict(X_test)
                         pred_count = np.sum(y_pred)
                     else:
                         pred_count = 0
@@ -1166,9 +1158,9 @@ Random Forest parameters:
   n_estimators: 500
   criterion: log_loss
   max_depth: None (controlled by min_samples_leaf)
-  min_samples_leaf: {min_samples_leaf_value} (5% of cleaned training set)
+  min_samples_leaf: {min_samples_leaf_value} (3% of cleaned training set)
   oob_score: True
-Noise cleaning used 5-fold cross-validation, dropping samples with OOF prediction != true label OR OOF prob < 0.6
+Noise cleaning used 5-fold cross-validation, dropping samples with OOF prediction != true label
 Validation F1 score: {val_f1:.4f}
 OOB score: {final_rf.oob_score_:.4f}
 
