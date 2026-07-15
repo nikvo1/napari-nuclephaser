@@ -131,7 +131,7 @@ def blur_image(image: np.ndarray, sigma: float = 5.0) -> np.ndarray:
 def apply_random_augmentations(
     image, gamma_range=(0.7, 1.3), noise_sigma_range=(2, 15)
 ):
-    # Augmentations are currently disabled (return original)
+    # Augmentations disabled (return original)
     return image
 
 
@@ -266,30 +266,27 @@ def extract_all_features(
     }
 
 
+# ---------- REVISED MATCHING FUNCTION ----------
 def match_points_to_boxes(
     points,
     boxes,
     confidences=None,
     expand_scale=1.05,
-    max_norm_dist=0.5,
+    max_norm_dist=0.6,
     optimal_area=None,
+    max_size_deviation=1.2,
 ):
     """
     Match ground truth points to detection boxes.
-    - points: list of (y, x)
-    - boxes: list of (x1, x2, y1, y2)  # x1<x2, y1<y2
-    - confidences: list of float (0-1)
-    - expand_scale: inflate box for inside test (handles boundary errors)
-    - max_norm_dist: reject matches with normalized distance > this
-    - optimal_area: if provided, use size penalty in cost (area mode from frame)
-    Returns: list of 0/1 for each box (1 if matched to a unique point)
+    Uses weighted cost: distance (0.5), confidence (0.25), size (0.25).
+    Rejects matches if normalized distance > max_norm_dist or size penalty > max_size_deviation.
     """
     N = len(points)
     M = len(boxes)
     if N == 0 or M == 0:
         return [0] * M
 
-    # Expand boxes for "inside" check (only for spatial query)
+    # Expand boxes for "inside" check
     expanded_boxes = []
     for x1, x2, y1, y2 in boxes:
         w = x2 - x1
@@ -304,54 +301,81 @@ def match_points_to_boxes(
         ey2 = int(cy + new_h / 2)
         expanded_boxes.append((ex1, ex2, ey1, ey2))
 
-    # Build STRtree for fast query
+    # Build spatial index
     box_geoms = [box(x1, y1, x2, y2) for (x1, x2, y1, y2) in expanded_boxes]
     tree = STRtree(box_geoms)
 
-    # Cost matrix: N x M (no dummy columns)
-    cost_matrix = np.full((N, M), 1e9, dtype=np.float64)
+    # Pre‑compute box centers and diagonals
+    centers = []
+    diags = []
+    areas = []
+    for x1, x2, y1, y2 in boxes:
+        cx = (x1 + x2) / 2
+        cy = (y1 + y2) / 2
+        diag = np.hypot(x2 - x1, y2 - y1) + 1e-6
+        area = (x2 - x1) * (y2 - y1)
+        centers.append((cx, cy))
+        diags.append(diag)
+        areas.append(area)
 
+    # Collect candidates: (point_idx, box_idx, norm_dist, conf_cost, size_penalty)
+    candidates = []
     for i, (py, px) in enumerate(points):
         pt = Point(px, py)
         candidate_idxs = tree.query(pt, predicate="intersects")
         for j in candidate_idxs:
             ex1, ex2, ey1, ey2 = expanded_boxes[j]
-            # Check if point is inside expanded box (precise)
             if ex1 <= px <= ex2 and ey1 <= py <= ey2:
-                # Original box (for distance to center)
-                x1, x2, y1, y2 = boxes[j]
-                cx = (x1 + x2) / 2
-                cy = (y1 + y2) / 2
+                cx, cy = centers[j]
                 dist = np.hypot(px - cx, py - cy)
-                diag = np.hypot(x2 - x1, y2 - y1) + 1e-6
-                norm_dist = dist / diag
+                norm_dist = dist / diags[j]
+                # Confidence cost
                 conf = confidences[j] if confidences is not None else 1.0
                 conf_cost = 1.0 - conf
-
+                # Size penalty
                 if optimal_area is not None:
-                    # Compute area penalty relative to optimal area
-                    area = (x2 - x1) * (y2 - y1)
-                    size_penalty = abs(area - optimal_area) / (
+                    size_penalty = abs(areas[j] - optimal_area) / (
                         optimal_area + 1e-6
                     )
-                    # Weighted cost: 0.3 dist, 0.4 conf, 0.4 size
-                    cost = (
-                        0.3 * norm_dist + 0.4 * conf_cost + 0.4 * size_penalty
-                    )
+                    size_penalty = min(size_penalty, 2.0)  # clip
                 else:
-                    # Original cost (equal weights)
-                    cost = 0.5 * norm_dist + 0.5 * conf_cost
+                    size_penalty = 0.0
+                # Only keep if distance not too far (avoid filling matrix with huge numbers)
+                if norm_dist <= max_norm_dist * 2.0:
+                    candidates.append(
+                        (i, j, norm_dist, conf_cost, size_penalty)
+                    )
 
-                cost_matrix[i, j] = cost
+    if not candidates:
+        return [0] * M
+
+    # Build cost matrix (N x M)
+    cost_matrix = np.full((N, M), 1e9, dtype=np.float64)
+    # Store norm_dist and size_penalty for final filtering
+    norm_dist_matrix = np.full((N, M), np.inf, dtype=np.float64)
+    size_penalty_matrix = np.full((N, M), np.inf, dtype=np.float64)
+
+    w_dist, w_conf, w_size = 0.5, 0.25, 0.25
+
+    for i, j, nd, cc, sp in candidates:
+        cost_matrix[i, j] = w_dist * nd + w_conf * cc + w_size * sp
+        norm_dist_matrix[i, j] = nd
+        size_penalty_matrix[i, j] = sp
 
     # Hungarian assignment
     row_ind, col_ind = linear_sum_assignment(cost_matrix)
 
-    # Mark boxes that are matched with cost <= max_norm_dist (distance check still applies)
     matched_boxes = [0] * M
     for i, j in zip(row_ind, col_ind, strict=False):
-        if cost_matrix[i, j] <= max_norm_dist:
-            matched_boxes[j] = 1
+        nd = norm_dist_matrix[i, j]
+        sp = size_penalty_matrix[i, j]
+        # Accept only if distance and size penalty are within limits
+        if nd <= max_norm_dist:
+            if optimal_area is not None:
+                if sp <= max_size_deviation:
+                    matched_boxes[j] = 1
+            else:
+                matched_boxes[j] = 1
     return matched_boxes
 
 
@@ -675,11 +699,10 @@ def calibrate_with_dynamic_threshold(
         show_error("No calibration tiles found.")
         return None
 
-    # ---------- NEW: Extract detections WITHOUT matching, store per frame ----------
+    # ---------- Extract detections WITHOUT matching, store per frame ----------
     print(
         "Extracting features from calibration tiles (including blur augmentation)..."
     )
-    # Each frame accumulates detections from all tiles and sigmas
     frame_detections = defaultdict(list)
 
     total_steps = len(calib_data) * len(sigmas)
@@ -698,7 +721,6 @@ def calibrate_with_dynamic_threshold(
                 )
                 blurred = blur_image(aug_tile, sigma)
 
-                # Extract detections (no matching yet)
                 dets = extract_detections_only(
                     blurred,
                     phase_model_low,
@@ -710,9 +732,7 @@ def calibrate_with_dynamic_threshold(
                     expand_scale=2.5,
                 )
                 for det in dets:
-                    det["tile_points"] = (
-                        points  # store points for later matching
-                    )
+                    det["tile_points"] = points
                     frame_detections[frame].append(det)
                 pbar.update(1)
 
@@ -720,33 +740,25 @@ def calibrate_with_dynamic_threshold(
         show_error("No detections found in any calibration tile.")
         return None
 
-    # ---------- Compute optimal area per frame ----------
+    # ---------- Compute optimal area per frame (median of top 10% conf) ----------
     print(
-        "Computing optimal box area per frame (from top 10% confident detections)..."
+        "Computing optimal box area per frame (median of top 10% confident detections)..."
     )
     optimal_areas = {}
     for frame, dets in frame_detections.items():
         if not dets:
             continue
-        # Sort by confidence descending
         sorted_dets = sorted(dets, key=lambda d: d["confidence"], reverse=True)
         top_n = max(1, int(0.1 * len(sorted_dets)))
         top_dets = sorted_dets[:top_n]
-        # Compute areas for top detections
-        areas = []
-        for d in top_dets:
-            x1, x2, y1, y2 = d["box"]
-            area = (x2 - x1) * (y2 - y1)
-            areas.append(area)
+        areas = [
+            (d["box"][1] - d["box"][0]) * (d["box"][3] - d["box"][2])
+            for d in top_dets
+        ]
         if areas:
-            # Find mode by binning to nearest multiple of 10 (adjust bin width if needed)
-            binned = np.round(np.array(areas) / 10) * 10
-            from scipy.stats import mode as scipy_mode
-
-            mode_val = scipy_mode(binned, keepdims=False).mode
-            optimal_areas[frame] = float(mode_val)
+            optimal_areas[frame] = np.median(areas)
         else:
-            optimal_areas[frame] = np.median(areas) if areas else 0.0
+            optimal_areas[frame] = 0.0
 
     print(f"Optimal areas per frame: {optimal_areas}")
 
@@ -755,10 +767,10 @@ def calibrate_with_dynamic_threshold(
     samples_per_frame = defaultdict(list)
 
     for frame, dets in frame_detections.items():
-        if frame not in optimal_areas:
+        if frame not in optimal_areas or optimal_areas[frame] == 0:
             continue
         opt_area = optimal_areas[frame]
-        # Group detections by tile (based on stored tile_points)
+        # Group detections by tile
         tile_groups = defaultdict(list)
         for det in dets:
             key = frozenset(det["tile_points"])
@@ -767,7 +779,6 @@ def calibrate_with_dynamic_threshold(
         for points_key, group_dets in tile_groups.items():
             points = list(points_key)
             if not points:
-                # No points in this tile → all detections are false positives
                 for det in group_dets:
                     det["ground_truth"] = 0
                     samples_per_frame[frame].append(det)
@@ -780,8 +791,9 @@ def calibrate_with_dynamic_threshold(
                 boxes,
                 confs,
                 expand_scale=1.05,
-                max_norm_dist=0.5,
+                max_norm_dist=0.6,
                 optimal_area=opt_area,
+                max_size_deviation=1.2,
             )
             for det, gt in zip(group_dets, matched, strict=False):
                 det["ground_truth"] = gt
@@ -833,7 +845,6 @@ def calibrate_with_dynamic_threshold(
     )
 
     # ---------- Train Random Forest with noise cleaning ----------
-    # Show a 0/0 progress bar while the classifier is being calibrated
     calib_pbar = progress(total=0, desc="Calibrating dynamic threshold")
 
     feature_cols = [
@@ -927,7 +938,7 @@ def calibrate_with_dynamic_threshold(
     y_val_pred = final_rf.predict(X_val)
     val_f1 = f1_score(y_val, y_val_pred)
 
-    calib_pbar.close()  # close the 0/0 bar
+    calib_pbar.close()
 
     print("\n========== FINAL RESULTS ==========")
     print(f"Final model trained on {len(X_train_cleaned)} clean samples")
@@ -1028,12 +1039,10 @@ def calibrate_with_dynamic_threshold(
     dynamic_folder = os.path.join(subfolder, "Dynamic Confidence Threshold")
     os.makedirs(dynamic_folder, exist_ok=True)
 
-    # Save random forest model
     model_path = os.path.join(dynamic_folder, "dynamic_threshold_rf.pkl")
     with open(model_path, "wb") as f:
         pickle.dump(final_rf, f)
 
-    # Save reference points
     if points_data.ndim == 2:
         if points_data.shape[1] == 2:
             points_to_save = np.column_stack(
@@ -1047,7 +1056,6 @@ def calibrate_with_dynamic_threshold(
         os.path.join(dynamic_folder, "reference_points.csv"), index=False
     )
 
-    # Scatter plots per sigma
     sns.set(rc={"figure.dpi": 150, "savefig.dpi": 150})
     for sigma in sigmas:
         sub = results_df[results_df["sigma"] == sigma]
@@ -1080,7 +1088,6 @@ def calibrate_with_dynamic_threshold(
         fig.savefig(plot_path, bbox_inches="tight")
         plt.close(fig)
 
-    # Metadata
     current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
     metadata = f"""Experiment time: {current_date}
 Calibration method: dynamic threshold (Random Forest with noise cleaning)
