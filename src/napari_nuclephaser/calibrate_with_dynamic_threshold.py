@@ -21,9 +21,13 @@ from scipy.ndimage import gaussian_filter
 from scipy.optimize import linear_sum_assignment
 from shapely.geometry import box
 from shapely.strtree import STRtree
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import f1_score
-from sklearn.model_selection import GridSearchCV, train_test_split
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import (
+    StratifiedKFold,
+    cross_val_predict,
+    train_test_split,
+)
 from torch import cuda
 
 from napari_nuclephaser.utils import create_unique_subfolder, initialize_model
@@ -423,50 +427,6 @@ def extract_detections_and_features(
     return pd.DataFrame(rows)
 
 
-def save_debug_rotation_image(
-    tile_gray,
-    points,
-    boxes,
-    matched_boxes,
-    output_path,
-    angle_deg,
-    sigma,
-):
-    """
-    Save a debug image showing rotated tile, ground‑truth points (green),
-    all detection boxes (blue), and matched boxes (red).
-    """
-    # Convert grayscale to BGR for drawing
-    img_color = cv2.cvtColor(tile_gray, cv2.COLOR_GRAY2BGR)
-
-    # Draw all detection boxes in blue
-    for x1, x2, y1, y2 in boxes:
-        cv2.rectangle(img_color, (x1, y1), (x2, y2), (255, 0, 0), 1)
-
-    # Draw matched boxes in red
-    for idx, matched in enumerate(matched_boxes):
-        if matched:
-            x1, x2, y1, y2 = boxes[idx]
-            cv2.rectangle(img_color, (x1, y1), (x2, y2), (0, 0, 255), 2)
-
-    # Draw ground‑truth points in green
-    for py, px in points:
-        cv2.circle(img_color, (int(px), int(py)), 3, (0, 255, 0), -1)
-
-    # Add text with angle and sigma
-    cv2.putText(
-        img_color,
-        f"Rotation {angle_deg}°, Sigma {sigma}",
-        (10, 20),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.6,
-        (255, 255, 255),
-        1,
-    )
-
-    cv2.imwrite(output_path, img_color)
-
-
 @magic_factory(
     Division_size={
         "max": 100000,
@@ -527,7 +487,7 @@ def calibrate_with_dynamic_threshold(
     Sahi_overlap: float = 0.2,
 ):
     """
-    Calibrate a dynamic threshold using a decision tree classifier.
+    Calibrate a dynamic threshold using a random forest classifier.
     Replaces fixed confidence threshold with feature-based filtering.
     """
     # ---------- Input validation ----------
@@ -741,10 +701,8 @@ def calibrate_with_dynamic_threshold(
     # ---------- Combine per frame into DataFrames (with safety checks) ----------
     print("Combining samples per frame...")
     for frame in list(samples_per_frame.keys()):
-        # If it's already a DataFrame, skip
         if isinstance(samples_per_frame[frame], pd.DataFrame):
             continue
-        # If it's a list of DataFrames, concatenate
         if (
             isinstance(samples_per_frame[frame], list)
             and samples_per_frame[frame]
@@ -753,10 +711,8 @@ def calibrate_with_dynamic_threshold(
                 samples_per_frame[frame], ignore_index=True
             )
         else:
-            # Empty list or unexpected type -> remove
             del samples_per_frame[frame]
 
-    # Final safety: ensure all values are DataFrames and not empty
     for frame in list(samples_per_frame.keys()):
         if (
             not isinstance(samples_per_frame[frame], pd.DataFrame)
@@ -770,7 +726,6 @@ def calibrate_with_dynamic_threshold(
 
     # ---------- Balance true positives across frames using rotations (as needed) ----------
     print("Balancing true positives across frames...")
-    # Compute TP counts safely
     tp_counts = {}
     for frame, df in samples_per_frame.items():
         if isinstance(df, pd.DataFrame):
@@ -784,17 +739,12 @@ def calibrate_with_dynamic_threshold(
 
     max_tp = max(tp_counts.values())
 
-    # Estimate total steps for progress bar
     total_rotation_steps = 0
     for frame, df in samples_per_frame.items():
         if isinstance(df, pd.DataFrame) and tp_counts[frame] < max_tp:
             total_rotation_steps += (
                 len(tile_data_per_frame[frame]) * len(sigmas) * 3
-            )  # 3 angles
-
-    # Debug flag – set to True to save the first rotated tile
-    DEBUG_ROTATION = True
-    debug_saved = False
+            )
 
     with progress(
         total=total_rotation_steps, desc="Rotation balancing"
@@ -815,60 +765,6 @@ def calibrate_with_dynamic_threshold(
                         tile_gray, points, angle
                     )
 
-                    # Debug: save the first rotated tile with points and matched boxes
-                    if DEBUG_ROTATION and not debug_saved:
-                        # Run detection once with sigma=0 to get boxes and matches
-                        # We'll use extract_detections_and_features but it only returns DataFrame,
-                        # so we'll call detection separately.
-                        phase_rgb = cv2.cvtColor(rot_tile, cv2.COLOR_GRAY2RGB)
-                        result = get_sliced_prediction(
-                            phase_rgb,
-                            phase_model_low,
-                            slice_height=Sahi_size,
-                            slice_width=Sahi_size,
-                            overlap_height_ratio=Sahi_overlap,
-                            overlap_width_ratio=Sahi_overlap,
-                            postprocess_type=Postprocess,
-                            postprocess_match_metric=Match_metric,
-                            postprocess_match_threshold=Intersection_threshold,
-                            verbose=0,
-                            force_postprocess_type=True,
-                        )
-                        dets = result.object_prediction_list
-                        boxes_list = []
-                        confs = []
-                        for det in dets:
-                            x1, x2, y1, y2 = (
-                                int(det.bbox.minx),
-                                int(det.bbox.maxx),
-                                int(det.bbox.miny),
-                                int(det.bbox.maxy),
-                            )
-                            boxes_list.append((x1, x2, y1, y2))
-                            confs.append(det.score.value)
-                        matched_boxes = match_points_to_boxes(
-                            rot_points, boxes_list, confs
-                        )
-
-                        # Create debug folder
-                        debug_folder = os.path.join(Save_folder, "debug")
-                        os.makedirs(debug_folder, exist_ok=True)
-                        debug_path = os.path.join(
-                            debug_folder,
-                            f"first_rotation_frame{frame}_angle{angle}_sigma0.png",
-                        )
-                        save_debug_rotation_image(
-                            rot_tile,
-                            rot_points,
-                            boxes_list,
-                            matched_boxes,
-                            debug_path,
-                            angle,
-                            0,
-                        )
-                        debug_saved = True
-
-                    # Now process all sigmas for this rotated tile
                     for sigma in sigmas:
                         np.random.seed(Random_seed + sigma + frame + angle)
                         aug_rot = apply_random_augmentations(
@@ -903,7 +799,6 @@ def calibrate_with_dynamic_threshold(
                 samples_per_frame[frame] = pd.concat(
                     [df, new_df], ignore_index=True
                 )
-                # Update tp_counts for this frame
                 tp_counts[frame] = samples_per_frame[frame][
                     "ground_truth"
                 ].sum()
@@ -942,8 +837,6 @@ def calibrate_with_dynamic_threshold(
         tp = tp.sample(n=len(fp), random_state=Random_seed)
     elif len(fp) > len(tp):
         fp = fp.sample(n=len(tp), random_state=Random_seed)
-    # Now tp and fp have equal length
-
     balanced_df = pd.concat([tp, fp], ignore_index=True).sample(
         frac=1, random_state=Random_seed
     )
@@ -956,7 +849,7 @@ def calibrate_with_dynamic_threshold(
         f"Balanced training set size: {len(balanced_df)} (TP: {len(tp)}, FP: {len(fp)})"
     )
 
-    # ---------- Train decision tree ----------
+    # ---------- Train Random Forest with noise cleaning ----------
     feature_cols = [
         "confidence",
         "size",
@@ -995,26 +888,80 @@ def calibrate_with_dynamic_threshold(
         X, y, test_size=0.2, random_state=Random_seed, stratify=y
     )
 
-    param_grid = {
-        "max_depth": [5, 7, 10, None],
-        "min_samples_leaf": [1, 5, 10, 20, 50],
-    }
-    clf = DecisionTreeClassifier(random_state=Random_seed)
-    grid_search = GridSearchCV(
-        clf, param_grid, cv=5, scoring="f1", n_jobs=-1, verbose=0
-    )
-    grid_search.fit(X_train, y_train)
-    best_clf = grid_search.best_estimator_
+    print(f"Training set size before cleaning: {len(X_train)}")
 
-    y_val_pred = best_clf.predict(X_val)
+    temp_rf = RandomForestClassifier(
+        n_estimators=500,
+        criterion="log_loss",
+        random_state=Random_seed,
+        n_jobs=-1,
+    )
+
+    oof_pred = cross_val_predict(
+        temp_rf,
+        X_train,
+        y_train,
+        cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=Random_seed),
+        method="predict",
+    )
+
+    oof_proba = cross_val_predict(
+        temp_rf,
+        X_train,
+        y_train,
+        cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=Random_seed),
+        method="predict_proba",
+    )
+
+    y_train_array = y_train.values
+    keep_mask = []
+
+    for i in range(len(X_train)):
+        true_label = y_train_array[i]
+        pred_label = oof_pred[i]
+        prob_true = oof_proba[i][true_label]
+
+        is_correct = pred_label == true_label
+        is_confident = prob_true >= 0.6
+
+        keep = is_correct and is_confident
+        keep_mask.append(keep)
+
+    keep_mask = np.array(keep_mask)
+    X_train_cleaned = X_train[keep_mask]
+    y_train_cleaned = y_train[keep_mask]
+
+    print(f"Training set size after cleaning: {len(X_train_cleaned)}")
+    print(
+        f"Dropped {len(X_train) - len(X_train_cleaned)} samples ({(1 - len(X_train_cleaned)/len(X_train))*100:.1f}%)"
+    )
+
+    min_samples_leaf_value = max(1, int(0.05 * len(X_train_cleaned)))
+    print(f"min_samples_leaf set to: {min_samples_leaf_value}")
+
+    final_rf = RandomForestClassifier(
+        n_estimators=500,
+        criterion="log_loss",
+        max_depth=None,
+        min_samples_leaf=min_samples_leaf_value,
+        random_state=Random_seed,
+        n_jobs=-1,
+        oob_score=True,
+    )
+
+    final_rf.fit(X_train_cleaned, y_train_cleaned)
+
+    y_val_pred = final_rf.predict(X_val)
     val_f1 = f1_score(y_val, y_val_pred)
 
-    print(f"Best params: {grid_search.best_params_}")
-    print(f"Validation F1: {val_f1:.4f}")
+    print("\n========== FINAL RESULTS ==========")
+    print(f"Final model trained on {len(X_train_cleaned)} clean samples")
+    print(f"Validation F1 Score: {val_f1:.4f}")
+    print(f"OOB Score (on cleaned data): {final_rf.oob_score_:.4f}")
 
     # ---------- Testing phase ----------
     print("Testing on test tiles with different blurs...")
-    results = []  # list of dicts: sigma, frame, gt_count, pred_count
+    results = []
 
     with progress(total=len(test_data) * len(sigmas), desc="Testing") as pbar:
         for entry in test_data:
@@ -1071,7 +1018,9 @@ def calibrate_with_dynamic_threshold(
                     if rows:
                         df_test = pd.DataFrame(rows)
                         X_test = df_test[feature_cols]
-                        y_pred = best_clf.predict(X_test)
+                        y_pred = final_rf.predict(
+                            X_test
+                        )  # <-- changed from best_clf
                         pred_count = np.sum(y_pred)
                     else:
                         pred_count = 0
@@ -1106,10 +1055,10 @@ def calibrate_with_dynamic_threshold(
     dynamic_folder = os.path.join(subfolder, "Dynamic Confidence Threshold")
     os.makedirs(dynamic_folder, exist_ok=True)
 
-    # Save decision tree
-    model_path = os.path.join(dynamic_folder, "dynamic_threshold.pkl")
+    # Save random forest model
+    model_path = os.path.join(dynamic_folder, "dynamic_threshold_rf.pkl")
     with open(model_path, "wb") as f:
-        pickle.dump(best_clf, f)
+        pickle.dump(final_rf, f)
 
     # Save reference points
     if points_data.ndim == 2:
@@ -1161,7 +1110,7 @@ def calibrate_with_dynamic_threshold(
     # Metadata
     current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
     metadata = f"""Experiment time: {current_date}
-Calibration method: dynamic threshold (decision tree)
+Calibration method: dynamic threshold (Random Forest with noise cleaning)
 Phase image stack: {Select_Phase_stack.name}, shape {image_data.shape}
 Phase model: {Phase_model.name} ({model_type})
 Division size: {Division_size}
@@ -1187,9 +1136,15 @@ Per-frame TP counts after balancing:
             metadata += f"  Frame {frame}: {tp_count} TP samples\n"
 
     metadata += f"""
-Best hyperparameters: {grid_search.best_params_}
-Cross-validation F1 score (best): {grid_search.best_score_:.4f}
+Random Forest parameters:
+  n_estimators: 500
+  criterion: log_loss
+  max_depth: None (controlled by min_samples_leaf)
+  min_samples_leaf: {min_samples_leaf_value} (5% of cleaned training set)
+  oob_score: True
+Noise cleaning used 5-fold cross-validation, dropping samples with OOF prediction != true label OR OOF prob < 0.6
 Validation F1 score: {val_f1:.4f}
+OOB score: {final_rf.oob_score_:.4f}
 
 --- Testing results ---
 Per-sigma MAPE (over tiles with gt>0):
@@ -1204,7 +1159,7 @@ Per-sigma MAPE (over tiles with gt>0):
     viewer.window._status_bar._toggle_activity_dock(False)
     show_info("Dynamic threshold calibration completed.")
 
-    summary = f"Dynamic threshold calibrated. Best tree: {grid_search.best_params_}\n"
+    summary = f"Dynamic threshold calibrated. Random Forest trained on {len(X_train_cleaned)} clean samples.\n"
     for sigma, mape in mape_per_sigma.items():
         summary += f"Blur strength {sigma} MAPE: {mape:.2f}%\n"
     return summary
