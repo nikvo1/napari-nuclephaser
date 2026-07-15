@@ -429,9 +429,10 @@ def make_points(
 
                 aug_img = aug_func(pic)
                 pbar_inner = None
+                post_pbar_inner = None
 
                 def progress_callback(current, total, aug_name=aug_name):
-                    nonlocal pbar_inner
+                    nonlocal pbar_inner, post_pbar_inner
                     if pbar_inner is None:
                         pbar_inner = progress(
                             total=total, desc=f"Sliced prediction ({aug_name})"
@@ -439,6 +440,10 @@ def make_points(
                     pbar_inner.update(1)
                     if current == total:
                         pbar_inner.close()
+                        post_pbar_inner = progress(
+                            total=0,
+                            desc=f"Running postprocessing ({aug_name})",
+                        )
 
                 result = get_sliced_prediction(
                     aug_img,
@@ -454,6 +459,9 @@ def make_points(
                     progress_bar=False,
                     progress_callback=progress_callback,
                 )
+                if post_pbar_inner is not None:
+                    post_pbar_inner.close()
+
                 result = result.to_coco_predictions()
                 points_aug = []
                 bboxes_aug = []
@@ -631,14 +639,18 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
 
         # Sliced prediction progress
         pbar_slices = None
+        post_pbar_dyn = None
 
         def progress_callback(current, total):
-            nonlocal pbar_slices
+            nonlocal pbar_slices, post_pbar_dyn
             if pbar_slices is None:
                 pbar_slices = progress(total=total, desc="Sliced prediction")
             pbar_slices.update(1)
             if current == total:
                 pbar_slices.close()
+                post_pbar_dyn = progress(
+                    total=0, desc="Running postprocessing..."
+                )
 
         result = get_sliced_prediction(
             pic,
@@ -654,6 +666,9 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             progress_bar=False,
             progress_callback=progress_callback,
         )
+        if post_pbar_dyn is not None:
+            post_pbar_dyn.close()
+
         detections = result.object_prediction_list
         if not detections:
             show_info("No detections found by the model.")
@@ -848,14 +863,16 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
     print("Performing sliced prediction...")
 
     pbar = None
+    post_pbar = None
 
     def progress_callback(current: int, total: int):
-        nonlocal pbar
+        nonlocal pbar, post_pbar
         if pbar is None:
             pbar = progress(total=total, desc="Processing slices")
         pbar.update(1)
         if current == total:
             pbar.close()
+            post_pbar = progress(total=0, desc="Running postprocessing...")
 
     result = get_sliced_prediction(
         pic,
@@ -871,6 +888,9 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         progress_bar=False,
         progress_callback=progress_callback,
     )
+    if post_pbar is not None:
+        post_pbar.close()
+
     result = result.to_coco_predictions()
     print("Prediction is done!")
 
