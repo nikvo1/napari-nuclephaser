@@ -580,7 +580,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         viewer.window._status_bar._toggle_activity_dock(False)
         return None
 
-    # ---------- Dynamic threshold mode ----------
+    # ---------- Dynamic threshold mode (using Random Forest) ----------
     if use_dynamic:
         if not Mode_file or not Mode_file.exists():
             show_error(
@@ -589,9 +589,9 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             viewer.window._status_bar._toggle_activity_dock(False)
             return None
 
-        # Load the decision tree
+        # Load the Random Forest classifier (saved from calibrate_with_dynamic_threshold)
         with open(Mode_file, "rb") as f:
-            clf = pickle.load(f)
+            rf_model = pickle.load(f)
 
         # Feature columns used during training (must match exactly)
         feature_cols = [
@@ -661,7 +661,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             return None
 
         # Extract features for each detection
-        print("Extracting features for dynamic threshold...")
+        print("Extracting features for dynamic threshold (Random Forest)...")
         rows = []
         # Convert the image to grayscale once (for feature extraction)
         if len(pic.shape) == 3:
@@ -708,9 +708,9 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             return None
 
         df = pd.DataFrame(rows)
-        # Predict labels
+        # Predict labels using the Random Forest
         X = df[feature_cols]
-        y_pred = clf.predict(X)
+        y_pred = rf_model.predict(X)
         # Keep only detections with label 1
         keep = y_pred == 1
 
@@ -802,7 +802,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
                     index=False,
                 )
 
-            # Save the decision tree used (copy)
+            # Save the Random Forest model used (copy)
             import shutil
 
             shutil.copy2(
@@ -813,10 +813,10 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             # Metadata
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
             metadata = f"""Experiment time: {current_date}
-Dynamic threshold prediction on single image
+Dynamic threshold prediction (Random Forest) on single image
 Image napari name: {name}
 Detection model: {Select_model}
-Dynamic threshold .pkl file: {Mode_file.name}
+Random Forest .pkl file: {Mode_file.name}
 Number of detections before filtering: {len(detections)}
 Number of detections after filtering: {n_filtered}
 SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Postprocess}, match_metric={Match_metric}, iou_thr={Intersection_threshold}
