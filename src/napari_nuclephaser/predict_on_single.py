@@ -649,7 +649,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             if current == total:
                 pbar_slices.close()
                 post_pbar_dyn = progress(
-                    total=0, desc="Running postprocessing..."
+                    total=0, desc="Running postprocessing"
                 )
 
         result = get_sliced_prediction(
@@ -872,7 +872,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         pbar.update(1)
         if current == total:
             pbar.close()
-            post_pbar = progress(total=0, desc="Running postprocessing...")
+            post_pbar = progress(total=0, desc="Running postprocessing")
 
     result = get_sliced_prediction(
         pic,
