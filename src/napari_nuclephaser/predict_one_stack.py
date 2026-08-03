@@ -211,8 +211,6 @@ def predict_on_stack(
     Generate_points: bool = True,
     Generate_bbox: bool = False,
     Show_confidence: bool = False,
-    Bbox_thickness: int = 5,
-    Score_text_size: int = 10,
     Use_TTA=False,
     TTA_metadata_file=pathlib.Path(),
     Save_result=True,
@@ -225,6 +223,8 @@ def predict_on_stack(
     Sahi_overlap: float = 0.2,
     Intersection_threshold=0.3,
     Points_size=30,
+    Bbox_thickness: int = 5,
+    Score_text_size: int = 10,
     Save_csv=False,
     Save_xlsx=True,
 ):
