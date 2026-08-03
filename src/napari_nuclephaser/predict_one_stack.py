@@ -604,7 +604,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             viewer.add_points(
                 np.array(all_points),
                 size=Points_size,
-                name=f"{n_total} points {name}",
+                name=f"points {name}",
             )
         else:
             viewer.add_points(
@@ -632,7 +632,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             edge_color="red",
             edge_width=Bbox_thickness,
             properties=props,
-            name=f"{n_total} bboxes {name}",
+            name=f"bboxes {name}",
             **text_kwargs,
         )
 
