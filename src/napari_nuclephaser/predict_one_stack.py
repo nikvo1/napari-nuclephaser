@@ -21,10 +21,8 @@ from napari_nuclephaser.utils import create_unique_subfolder, initialize_model
 warnings.filterwarnings(action="ignore", category=FutureWarning)
 warnings.filterwarnings(action="ignore", category=UserWarning)
 
-# cuda device check
 cuda_available = "cuda:0" if cuda.is_available() else "cpu"
 
-# find default models folder
 models_folder = pathlib.Path(pathlib.Path(__file__).parent / "models")
 first_model = next((x for x in models_folder.iterdir() if x.is_file()), None)
 
@@ -90,7 +88,6 @@ AUGMENTATION_MAP = {
     "bilateral_10": (_bilateral_filter_10, 1.0),
     "sharpen": (_unsharp_mask, 1.0),
 }
-# ---------------------------------------------------------------------------
 
 
 def _parse_metadata(metadata_path):
@@ -165,6 +162,21 @@ def _parse_metadata(metadata_path):
     Points_size={
         "tooltip": "Points size in results Points layer. Can be changed later by pressing Ctrl+A and moving Size slider in the layer itself"
     },
+    Generate_points={
+        "tooltip": "If chosen, Points layer will be created with point at the center of bounding box for each detection"
+    },
+    Generate_bbox={
+        "tooltip": "If chosen, Shapes layer will be created with rectangle representing bounding box of each detection"
+    },
+    Show_confidence={
+        "tooltip": "If chosen, each rectangle in Shapes layer will have confidence score of each detection printed above it"
+    },
+    Bbox_thickness={
+        "tooltip": "Thickness of the side of rectangles in Shapes layer if Generate bbox is chosen"
+    },
+    Score_text_size={
+        "tooltip": "Font size of confidence score text if Show confidence parameter is chosen"
+    },
     Save_result={
         "tooltip": "If chosen, a folder will be created with .csv or .xlsx file containing quantification of objects for each frame"
     },
@@ -196,6 +208,11 @@ def predict_on_stack(
     viewer: napari.Viewer,
     Select_model=first_model,
     Confidence_threshold: float = 0.2,
+    Generate_points: bool = True,
+    Generate_bbox: bool = False,
+    Show_confidence: bool = False,
+    Bbox_thickness: int = 5,
+    Score_text_size: int = 10,
     Use_TTA=False,
     TTA_metadata_file=pathlib.Path(),
     Save_result=True,
@@ -211,7 +228,7 @@ def predict_on_stack(
     Save_csv=False,
     Save_xlsx=True,
 ):
-    """Takes a 1-dimensional stack of images, YOLO model, and optional TTA metadata -> adds point layers and saves counts."""
+    """Takes a 1-dimensional stack of images, YOLO model, and optional TTA metadata -> adds point/bbox layers and saves counts."""
     pic = Select_stack.data
     # Validate stack
     if len(pic.shape) == 2 or (
@@ -233,6 +250,18 @@ def predict_on_stack(
 
     viewer.window._status_bar._toggle_activity_dock(True)
 
+    # ---- Helper to create bounding box vertices in 3D (frame, y, x) ----
+    def bbox_vertices(frame_idx, x1, y1, x2, y2):
+        """Return 4 vertices of a rectangle in (z, y, x) order."""
+        return np.array(
+            [
+                [frame_idx, y1, x1],
+                [frame_idx, y1, x2],
+                [frame_idx, y2, x2],
+                [frame_idx, y2, x1],
+            ]
+        )
+
     # ---- TTA mode ----
     if Use_TTA:
         if not TTA_metadata_file or not TTA_metadata_file.exists():
@@ -244,7 +273,6 @@ def predict_on_stack(
             viewer.window._status_bar._toggle_activity_dock(False)
             return None
 
-        # Parse metadata
         try:
             best_augs, aug_thresholds, model_name_meta = _parse_metadata(
                 str(TTA_metadata_file)
@@ -254,24 +282,22 @@ def predict_on_stack(
             viewer.window._status_bar._toggle_activity_dock(False)
             return None
 
-        # Validate model name
         selected_model_name = pathlib.Path(Select_model).name
         if model_name_meta and selected_model_name != model_name_meta:
             show_info(
                 f"Warning: Selected model ({selected_model_name}) does not match model in metadata ({model_name_meta}). Continuing anyway."
             )
 
-        # For each augmentation, collect points (frame, y, x) and per-frame counts
-        all_aug_points = (
-            []
-        )  # list of points arrays per augmentation (for layer)
-        all_aug_counts = []  # list of lists: per-frame counts per augmentation
+        # Storage per augmentation
+        all_aug_points = []  # list of numpy arrays (N, 3) with (frame, y, x)
+        all_aug_bboxes = []  # list of lists of 4x3 numpy arrays
+        all_aug_scores = []  # list of lists of scores
+        all_aug_counts = []  # list of lists of per-frame counts
 
-        # Outer progress bar over augmentations
         with progress(
             total=len(best_augs), desc="TTA augmentations"
         ) as pbar_augs:
-            for _, aug_name in enumerate(best_augs):
+            for aug_name in best_augs:
                 if aug_name not in AUGMENTATION_MAP:
                     show_error(
                         f"Unknown augmentation '{aug_name}' in metadata. Skipping."
@@ -280,22 +306,21 @@ def predict_on_stack(
                     continue
                 aug_func, scale_factor = AUGMENTATION_MAP[aug_name]
                 thr = aug_thresholds.get(aug_name, Confidence_threshold)
-                # Initialize model for this augmentation
                 model, _ = initialize_model(
                     str(Select_model), thr, cuda_available
                 )
 
-                # Storage for this augmentation
                 aug_points = []  # list of [frame, y, x]
+                aug_bboxes = []  # list of 4x3 arrays
+                aug_scores = []  # list of scores
                 frame_counts = []
 
-                # Process each frame (inner progress bar)
                 with progress(
                     total=len(pic), desc=f"Processing frames ({aug_name})"
                 ) as pbar_frames:
                     for i in range(len(pic)):
                         frame = pic[i]
-                        if hasattr(frame, "compute"):  # handle dask
+                        if hasattr(frame, "compute"):
                             frame = frame.compute()
                         if frame.dtype == np.uint16:
                             frame = cv2.convertScaleAbs(
@@ -305,10 +330,8 @@ def predict_on_stack(
                         if is_gray:
                             frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
 
-                        # Apply augmentation
                         aug_frame = aug_func(frame)
 
-                        # Sliced prediction (with nested progress callback)
                         pbar_slice = None
 
                         def slice_callback(
@@ -341,32 +364,40 @@ def predict_on_stack(
                         )
                         result = result.to_coco_predictions()
 
-                        # Convert detections
                         frame_count = 0
                         for instance in result:
                             bbox = instance[
                                 "bbox"
-                            ]  # [x, y, width, height] in augmented image
-                            # Center point
+                            ]  # [x, y, w, h] in augmented image
+                            score = instance["score"]
+                            # Scale back to original image coordinates
                             if scale_factor != 1.0:
-                                center_x = int(
-                                    (bbox[0] + bbox[2] // 2) * scale_factor
-                                )
-                                center_y = int(
-                                    (bbox[1] + bbox[3] // 2) * scale_factor
-                                )
+                                x = bbox[0] * scale_factor
+                                y = bbox[1] * scale_factor
+                                w = bbox[2] * scale_factor
+                                h = bbox[3] * scale_factor
                             else:
-                                center_x = int(bbox[0] + bbox[2] // 2)
-                                center_y = int(bbox[1] + bbox[3] // 2)
-                            aug_points.append(
-                                [i, center_y, center_x]
-                            )  # (frame, y, x)
+                                x, y, w, h = bbox
+                            x1, y1, x2, y2 = (
+                                int(x),
+                                int(y),
+                                int(x + w),
+                                int(y + h),
+                            )
+                            cx = int(x + w / 2)
+                            cy = int(y + h / 2)
+                            aug_points.append([i, cy, cx])  # (frame, row, col)
+                            aug_bboxes.append(bbox_vertices(i, x1, y1, x2, y2))
+                            aug_scores.append(score)
                             frame_count += 1
                         frame_counts.append(frame_count)
                         pbar_frames.update(1)
 
-                # Store results for this augmentation
-                all_aug_points.append(np.array(aug_points))
+                all_aug_points.append(
+                    np.array(aug_points) if aug_points else np.empty((0, 3))
+                )
+                all_aug_bboxes.append(aug_bboxes)
+                all_aug_scores.append(aug_scores)
                 all_aug_counts.append(frame_counts)
                 pbar_augs.update(1)
 
@@ -381,21 +412,51 @@ def predict_on_stack(
             ]
             avg_counts_per_frame.append(np.mean(counts) if counts else 0)
 
-        # Create a combined points layer? No, create separate layers per augmentation as requested
-        for _, (aug_name, aug_points) in enumerate(
-            zip(best_augs, all_aug_points, strict=False)
-        ):
-            if len(aug_points) > 0:
-                viewer.add_points(
-                    aug_points[:, 1:],  # drop frame column, keep (y, x)
-                    size=Points_size,
-                    name=f"{len(aug_points)} points ({aug_name}) {name}",
-                )
-            else:
-                viewer.add_points(
-                    np.empty((0, 2)),
-                    size=Points_size,
-                    name=f"0 points ({aug_name}) {name}",
+        # Add layers for each augmentation
+        for idx, aug_name in enumerate(best_augs):
+            pts = all_aug_points[idx]
+            bboxes = all_aug_bboxes[idx]
+            scores = all_aug_scores[idx]
+            n_det = len(pts)
+
+            # Points
+            if Generate_points or (not Generate_points and not Generate_bbox):
+                if n_det > 0:
+                    # pts is (N,3) -> (frame, y, x)
+                    viewer.add_points(
+                        pts,
+                        size=Points_size,
+                        name=f"{n_det} points ({aug_name}) {name}",
+                    )
+                else:
+                    viewer.add_points(
+                        np.empty((0, 3)),
+                        size=Points_size,
+                        name=f"0 points ({aug_name}) {name}",
+                    )
+
+            # Bounding boxes
+            if Generate_bbox and n_det > 0:
+                props = {"score": scores}
+                text_kwargs = {}
+                if Show_confidence:
+                    text_kwargs = {
+                        "text": {
+                            "string": "{score:.2f}",
+                            "size": Score_text_size,
+                            "color": "red",
+                            "anchor": "upper_left",
+                            "translation": [-3, 0],
+                        }
+                    }
+                viewer.add_shapes(
+                    bboxes,
+                    face_color="transparent",
+                    edge_color="red",
+                    edge_width=Bbox_thickness,
+                    properties=props,
+                    name=f"{n_det} bboxes ({aug_name}) {name}",
+                    **text_kwargs,
                 )
 
         # Save averaged results if requested
@@ -403,7 +464,6 @@ def predict_on_stack(
             subfolder = create_unique_subfolder(
                 str(Save_folder), str(Experiment_name)
             )
-            # Create dataframe with frame indices and averaged counts
             result_table = {
                 "Frame": list(range(n_frames)),
                 "Count": avg_counts_per_frame,
@@ -427,7 +487,6 @@ def predict_on_stack(
                     index=False,
                 )
 
-            # Save metadata
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
             metadata = f"""Experiment time: {current_date}
 TTA prediction on stack
@@ -457,12 +516,14 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         f"Model is initialized! Model type is {model_type}. Running on {cuda_available}"
     )
 
-    points = []
+    # Accumulators for all detections across frames
+    all_points = []  # list of [frame, y, x]
+    all_bboxes = []  # list of 4x3 arrays
+    all_scores = []  # list of scores
     result_table = {"Frame": [], "Count": []}
 
     print("Running predictions...")
 
-    # Helper to create a progress callback for each frame
     def make_slice_callback(frame_idx):
         pbar = None
 
@@ -507,12 +568,25 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             progress_callback=make_slice_callback(i),
         )
         result = result.to_coco_predictions()
+
+        frame_count = 0
         for instance in result:
-            bbox = instance["bbox"]
-            Y, X = int(bbox[0] + (bbox[2] // 2)), int(bbox[1] + (bbox[3] // 2))
-            points.append([i, X, Y])
+            bbox = instance["bbox"]  # [x, y, w, h]
+            score = instance["score"]
+            x1, y1, x2, y2 = (
+                int(bbox[0]),
+                int(bbox[1]),
+                int(bbox[0] + bbox[2]),
+                int(bbox[1] + bbox[3]),
+            )
+            cx = int(bbox[0] + bbox[2] / 2)
+            cy = int(bbox[1] + bbox[3] / 2)
+            all_points.append([i, cy, cx])  # (frame, row, col)
+            all_bboxes.append(bbox_vertices(i, x1, y1, x2, y2))
+            all_scores.append(score)
+            frame_count += 1
         result_table["Frame"].append(i)
-        result_table["Count"].append(len(result))
+        result_table["Count"].append(frame_count)
 
         if i == 0:
             finish_time = time.time()
@@ -523,7 +597,45 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             )
         print(f"Slice {i} is done!")
 
-    viewer.add_points(points, size=Points_size, name=f"Points for {name}")
+    # Add layers after processing all frames
+    n_total = len(all_points)
+    if Generate_points or (not Generate_points and not Generate_bbox):
+        if n_total > 0:
+            viewer.add_points(
+                np.array(all_points),
+                size=Points_size,
+                name=f"{n_total} points {name}",
+            )
+        else:
+            viewer.add_points(
+                np.empty((0, 3)),
+                size=Points_size,
+                name=f"0 points {name}",
+            )
+
+    if Generate_bbox and n_total > 0:
+        props = {"score": all_scores}
+        text_kwargs = {}
+        if Show_confidence:
+            text_kwargs = {
+                "text": {
+                    "string": "{score:.2f}",
+                    "size": Score_text_size,
+                    "color": "red",
+                    "anchor": "upper_left",
+                    "translation": [-3, 0],
+                }
+            }
+        viewer.add_shapes(
+            all_bboxes,
+            face_color="transparent",
+            edge_color="red",
+            edge_width=Bbox_thickness,
+            properties=props,
+            name=f"{n_total} bboxes {name}",
+            **text_kwargs,
+        )
+
     viewer.window._status_bar._toggle_activity_dock(False)
     print("Prediction is complete!")
 
