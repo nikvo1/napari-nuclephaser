@@ -323,9 +323,9 @@ def match_boxes_to_boxes(
                 )
                 conf_cost = 1.0 - conf
                 cost = (
-                    (1 / 3) * norm_dist
-                    + (1 / 3) * conf_cost
-                    + (1 / 3) * area_penalty
+                    (0.45) * norm_dist
+                    + (0.1) * conf_cost
+                    + (0.45) * area_penalty
                 )
                 cost_matrix[i, j] = cost
                 norm_dist_matrix[i, j] = norm_dist
