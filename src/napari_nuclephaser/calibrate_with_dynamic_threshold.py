@@ -303,8 +303,9 @@ def match_boxes_to_boxes(
                     det_confidences[j] if det_confidences is not None else 1.0
                 )
                 conf_cost = 1.0 - conf
-                # cost combines distance (0.45), confidence (0.1), area similarity (0.45)
-                cost = 0.45 * norm_dist + 0.1 * conf_cost + 0.45 * area_penalty
+                cost = (
+                    0.33 * norm_dist + 0.33 * conf_cost + 0.33 * area_penalty
+                )
                 cost_matrix[i, j] = cost
 
     row_ind, col_ind = linear_sum_assignment(cost_matrix)
