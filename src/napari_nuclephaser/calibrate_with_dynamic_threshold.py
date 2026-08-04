@@ -242,17 +242,16 @@ def match_boxes_to_boxes(
     gt_boxes,
     det_boxes,
     det_confidences=None,
-    expand_scale=1.05,
-    max_norm_dist=0.6,
+    expand_scale=1.5,  # increased from 1.05
+    max_norm_dist=0.8,  # increased from 0.6
     max_area_ratio=2.0,
 ):
     N_gt = len(gt_boxes)
     M_det = len(det_boxes)
     if N_gt == 0 or M_det == 0:
         return [0] * M_det
-    det_centers = []
-    det_diags = []
-    det_areas = []
+
+    det_centers, det_diags, det_areas = [], [], []
     for x1, x2, y1, y2 in det_boxes:
         cx = (x1 + x2) / 2
         cy = (y1 + y2) / 2
@@ -261,6 +260,8 @@ def match_boxes_to_boxes(
         det_centers.append((cx, cy))
         det_diags.append(diag)
         det_areas.append(area)
+
+    # Expand detection boxes for candidate query
     expanded_det_boxes = []
     for x1, x2, y1, y2 in det_boxes:
         w = x2 - x1
@@ -274,13 +275,16 @@ def match_boxes_to_boxes(
         ey1 = int(cy - new_h / 2)
         ey2 = int(cy + new_h / 2)
         expanded_det_boxes.append((ex1, ex2, ey1, ey2))
+
     det_geoms = [
         box(x1, y1, x2, y2) for (x1, x2, y1, y2) in expanded_det_boxes
     ]
     tree = STRtree(det_geoms)
+
     cost_matrix = np.full((N_gt, M_det), 1e9, dtype=np.float64)
     norm_dist_matrix = np.full((N_gt, M_det), np.inf, dtype=np.float64)
     area_ratio_matrix = np.full((N_gt, M_det), np.inf, dtype=np.float64)
+
     for i, (gx1, gx2, gy1, gy2) in enumerate(gt_boxes):
         g_cx = (gx1 + gx2) / 2
         g_cy = (gy1 + gy2) / 2
@@ -302,14 +306,11 @@ def match_boxes_to_boxes(
                     det_confidences[j] if det_confidences is not None else 1.0
                 )
                 conf_cost = 1.0 - conf
-                cost = (
-                    (0.45) * norm_dist
-                    + (0.1) * conf_cost
-                    + (0.45) * area_penalty
-                )
+                cost = 0.45 * norm_dist + 0.1 * conf_cost + 0.45 * area_penalty
                 cost_matrix[i, j] = cost
                 norm_dist_matrix[i, j] = norm_dist
                 area_ratio_matrix[i, j] = area_ratio
+
     row_ind, col_ind = linear_sum_assignment(cost_matrix)
     matched_detections = [0] * M_det
     for i, j in zip(row_ind, col_ind, strict=False):
