@@ -440,7 +440,7 @@ def extract_detections_only_boxes(
     auto_call=False,
     result_widget=True,
 )
-def calibrate_with_dynamic_threshold_boxes(
+def calibrate_with_dynamic_threshold(
     Select_Phase_stack: Image,
     Select_Shapes_layer: Shapes,
     viewer: napari.Viewer,
