@@ -49,15 +49,8 @@ def _ensure_numpy(arr):
 
 
 def get_bbox_from_polygon(polygon):
-    """
-    Extract (x1, x2, y1, y2) from a napari polygon.
-    Polygon can be 2D (N,2) or 3D (N,3) with columns (z, y, x).
-    Returns (x1, x2, y1, y2) and frame index (0 if 2D).
-    """
     pts = polygon if isinstance(polygon, np.ndarray) else np.array(polygon)
-
     if pts.ndim == 2 and pts.shape[1] == 3:
-        # 3D points: columns (frame, y, x)
         frame = int(pts[0, 0])
         y_vals = pts[:, 1]
         x_vals = pts[:, 2]
@@ -65,7 +58,6 @@ def get_bbox_from_polygon(polygon):
         frame = 0
         y_vals = pts[:, 0]
         x_vals = pts[:, 1]
-
     y1, y2 = int(np.min(y_vals)), int(np.max(y_vals))
     x1, x2 = int(np.min(x_vals)), int(np.max(x_vals))
     return (x1, x2, y1, y2), frame
@@ -79,7 +71,6 @@ def _split_image_and_boxes(
     num_tiles_width = width // window_size
     cropped_images = []
     boxes_per_tile = []
-
     for i in range(num_tiles_height):
         for j in range(num_tiles_width):
             left = j * window_size
@@ -95,7 +86,6 @@ def _split_image_and_boxes(
                 if left <= cx < right and upper <= cy < lower:
                     tile_boxes_count += 1
             boxes_per_tile.append(tile_boxes_count)
-
     return cropped_images, boxes_per_tile
 
 
@@ -197,7 +187,6 @@ def extract_all_features(
     lap_expanded = cv2.Laplacian(expanded_region, cv2.CV_64F, ksize=3)
     flat_img = expanded_region.ravel()
     flat_lap = lap_expanded.ravel()
-
     ctx_mean = np.mean(flat_img)
     ctx_std = np.std(flat_img)
     ctx_median = np.median(flat_img)
@@ -209,19 +198,15 @@ def extract_all_features(
     hist = hist.astype(np.float64)
     hist /= hist.sum() + 1e-12
     ctx_entropy = -np.sum(hist * np.log2(hist + 1e-12))
-
     var_I = np.var(flat_img)
     var_L = np.var(flat_lap)
     focus_score = var_L / (var_I + eps) if (var_I + eps) > 0 else 0.0
-
     original_region = expanded_region[rel_y1:rel_y2, rel_x1:rel_x2]
     obj_feats = extract_features_grayscale(original_region)
-
     rel_mean = obj_feats["mean"] - ctx_median
     rel_median = obj_feats["median"] - ctx_median
     rel_std = obj_feats["std"] / (ctx_std + 1e-6)
     rel_contrast = obj_feats["rms_contrast"] - ctx_rms
-
     return {
         "height/width": obj_feats["height/width"],
         "mean": obj_feats["mean"],
@@ -265,7 +250,6 @@ def match_boxes_to_boxes(
     M_det = len(det_boxes)
     if N_gt == 0 or M_det == 0:
         return [0] * M_det
-
     det_centers = []
     det_diags = []
     det_areas = []
@@ -277,7 +261,6 @@ def match_boxes_to_boxes(
         det_centers.append((cx, cy))
         det_diags.append(diag)
         det_areas.append(area)
-
     expanded_det_boxes = []
     for x1, x2, y1, y2 in det_boxes:
         w = x2 - x1
@@ -291,16 +274,13 @@ def match_boxes_to_boxes(
         ey1 = int(cy - new_h / 2)
         ey2 = int(cy + new_h / 2)
         expanded_det_boxes.append((ex1, ex2, ey1, ey2))
-
     det_geoms = [
         box(x1, y1, x2, y2) for (x1, x2, y1, y2) in expanded_det_boxes
     ]
     tree = STRtree(det_geoms)
-
     cost_matrix = np.full((N_gt, M_det), 1e9, dtype=np.float64)
     norm_dist_matrix = np.full((N_gt, M_det), np.inf, dtype=np.float64)
     area_ratio_matrix = np.full((N_gt, M_det), np.inf, dtype=np.float64)
-
     for i, (gx1, gx2, gy1, gy2) in enumerate(gt_boxes):
         g_cx = (gx1 + gx2) / 2
         g_cy = (gy1 + gy2) / 2
@@ -330,9 +310,7 @@ def match_boxes_to_boxes(
                 cost_matrix[i, j] = cost
                 norm_dist_matrix[i, j] = norm_dist
                 area_ratio_matrix[i, j] = area_ratio
-
     row_ind, col_ind = linear_sum_assignment(cost_matrix)
-
     matched_detections = [0] * M_det
     for i, j in zip(row_ind, col_ind, strict=False):
         nd = norm_dist_matrix[i, j]
@@ -369,7 +347,6 @@ def extract_detections_only_boxes(
     detections = result.object_prediction_list
     if not detections:
         return []
-
     dets = []
     for det in detections:
         x1, x2, y1, y2 = (
@@ -436,6 +413,10 @@ def extract_detections_only_boxes(
     Experiment_name={
         "tooltip": "Name of the subfolder where results will be saved."
     },
+    Debug={
+        "widget_type": "CheckBox",
+        "tooltip": "Add debug Shapes layer showing matched (green), false positives (red), and false negatives (blue).",
+    },
     call_button="Calibrate Dynamic Threshold",
     auto_call=False,
     result_widget=True,
@@ -457,30 +438,22 @@ def calibrate_with_dynamic_threshold(
     Intersection_threshold=0.3,
     Sahi_size=640,
     Sahi_overlap: float = 0.2,
+    Debug: bool = False,
 ):
-    """
-    Calibrate a dynamic threshold using ground truth bounding boxes.
-    Supports stacked images with per-frame shapes (3D polygons).
-    """
     image_data = _ensure_numpy(Select_Phase_stack.data)
     shapes_data = Select_Shapes_layer.data
     if not shapes_data:
         show_error("Shapes layer is empty!")
         return None
-
-    # Parse ground truth boxes per frame
     boxes_per_frame = defaultdict(list)
     for poly in shapes_data:
         if len(poly) < 3:
             continue
         (x1, x2, y1, y2), frame = get_bbox_from_polygon(poly)
         boxes_per_frame[frame].append((x1, x2, y1, y2))
-
     if not boxes_per_frame:
         show_error("No valid bounding boxes found in Shapes layer.")
         return None
-
-    # Determine number of frames and extract images
     if image_data.ndim == 2 or (
         image_data.ndim == 3 and image_data.shape[-1] in (1, 3, 4)
     ):
@@ -496,27 +469,22 @@ def calibrate_with_dynamic_threshold(
     else:
         show_error("Unsupported image dimensions.")
         return None
-
     frames_with_images = [t for t in range(n_frames) if t in boxes_per_frame]
     if not frames_with_images:
         show_error("No frames with matching ground truth boxes found.")
         return None
-
     sigmas = list(range(Max_blur_strength + 1))
     if not sigmas:
         show_error("Max_blur_strength must be >= 0.")
         return None
-
     print("Initialising model with confidence=0.01 ...")
     phase_model_low, model_type = initialize_model(
         str(Phase_model), 0.01, cuda_available
     )
     print(f"Model ready: {model_type}, device: {cuda_available}")
-
     calib_data = []
     test_data = []
     viewer.window._status_bar._toggle_activity_dock(True)
-
     with progress(
         total=len(frames_with_images), desc="Splitting frames"
     ) as pbar:
@@ -526,7 +494,6 @@ def calibrate_with_dynamic_threshold(
             if not frame_boxes:
                 pbar.update(1)
                 continue
-
             if img.ndim == 3 and img.shape[-1] == 3:
                 phase_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
             elif img.ndim == 3 and img.shape[-1] == 1:
@@ -535,12 +502,9 @@ def calibrate_with_dynamic_threshold(
                 phase_gray = img
             else:
                 phase_gray = img
-
             if phase_gray.dtype == np.uint16:
                 phase_gray = cv2.convertScaleAbs(phase_gray, alpha=255 / 65535)
-
             rgb_img = cv2.cvtColor(phase_gray, cv2.COLOR_GRAY2RGB)
-
             all_tiles, all_gt_counts = _split_image_and_boxes(
                 rgb_img, frame_boxes, Division_size
             )
@@ -548,7 +512,6 @@ def calibrate_with_dynamic_threshold(
             if n_tiles == 0:
                 pbar.update(1)
                 continue
-
             tile_boxes = []
             for i in range(n_tiles):
                 left = (
@@ -569,13 +532,11 @@ def calibrate_with_dynamic_threshold(
                             (x1 - left, x2 - left, y1 - upper, y2 - upper)
                         )
                 tile_boxes.append(boxes_in_tile)
-
             np.random.seed(Random_seed)
             calib_indices = np.random.choice(
                 n_tiles, int(n_tiles * Calibration_proportion), replace=False
             )
             test_indices = np.setdiff1d(np.arange(n_tiles), calib_indices)
-
             for idx in calib_indices:
                 tile_rgb = all_tiles[idx]
                 tile_gray = cv2.cvtColor(tile_rgb, cv2.COLOR_RGB2GRAY)
@@ -587,7 +548,6 @@ def calibrate_with_dynamic_threshold(
                         "gt_count": len(tile_boxes[idx]),
                     }
                 )
-
             for idx in test_indices:
                 tile_rgb = all_tiles[idx]
                 tile_gray = cv2.cvtColor(tile_rgb, cv2.COLOR_RGB2GRAY)
@@ -599,18 +559,14 @@ def calibrate_with_dynamic_threshold(
                         "gt_count": len(tile_boxes[idx]),
                     }
                 )
-
             pbar.update(1)
-
     if not calib_data:
         show_error(
             "No calibration tiles found (no ground truth boxes in any tile)."
         )
         return None
-
     print("Extracting features from calibration tiles...")
     frame_detections = defaultdict(list)
-
     total_steps = len(calib_data) * len(sigmas)
     with progress(
         total=total_steps, desc="Calibration feature extraction"
@@ -619,14 +575,12 @@ def calibrate_with_dynamic_threshold(
             frame = entry["frame_idx"]
             tile_gray = entry["tile_gray"]
             gt_boxes = entry["gt_boxes"]
-
             for sigma in sigmas:
                 np.random.seed(Random_seed + sigma + frame)
                 aug_tile = apply_random_augmentations(
                     tile_gray, gamma_range=(0.5, 1.5)
                 )
                 blurred = blur_image(aug_tile, sigma)
-
                 dets = extract_detections_only_boxes(
                     blurred,
                     phase_model_low,
@@ -641,20 +595,17 @@ def calibrate_with_dynamic_threshold(
                     det["gt_boxes"] = gt_boxes
                     frame_detections[frame].append(det)
                 pbar.update(1)
-
     if not frame_detections:
         show_error("No detections found in any calibration tile.")
         return None
-
     print("Matching detections to ground truth boxes...")
     samples_per_frame = defaultdict(list)
-
+    debug_info = []
     for frame, dets in frame_detections.items():
         tile_groups = defaultdict(list)
         for det in dets:
             key = frozenset(det["gt_boxes"])
             tile_groups[key].append(det)
-
         for gt_boxes_key, group_dets in tile_groups.items():
             gt_boxes = list(gt_boxes_key)
             if not gt_boxes:
@@ -662,7 +613,6 @@ def calibrate_with_dynamic_threshold(
                     det["ground_truth"] = 0
                     samples_per_frame[frame].append(det)
                 continue
-
             det_boxes = [d["box"] for d in group_dets]
             confs = [d["confidence"] for d in group_dets]
             matched = match_boxes_to_boxes(
@@ -676,7 +626,32 @@ def calibrate_with_dynamic_threshold(
             for det, gt in zip(group_dets, matched, strict=False):
                 det["ground_truth"] = gt
                 samples_per_frame[frame].append(det)
-
+            debug_info.append((frame, gt_boxes, det_boxes, matched))
+    if Debug:
+        print("Creating debug Shapes layer with matched boxes...")
+        matched_vertices = []
+        for frame, _gt_boxes, det_boxes, matched in debug_info:
+            for det_box, m in zip(det_boxes, matched, strict=False):
+                if m:
+                    x1, x2, y1, y2 = det_box
+                    matched_vertices.append(
+                        np.array(
+                            [
+                                [frame, y1, x1],
+                                [frame, y1, x2],
+                                [frame, y2, x2],
+                                [frame, y2, x1],
+                            ]
+                        )
+                    )
+        if matched_vertices:
+            viewer.add_shapes(
+                matched_vertices,
+                face_color="transparent",
+                edge_color="green",
+                edge_width=2,
+                name="Matched boxes (TP)",
+            )
     all_rows = []
     for _, dets in samples_per_frame.items():
         for det in dets:
@@ -688,20 +663,15 @@ def calibrate_with_dynamic_threshold(
                 **det["features"],
             }
             all_rows.append(row)
-
     if not all_rows:
         show_error("No matching results after applying box matching.")
         return None
-
     full_df = pd.DataFrame(all_rows)
-
     tp = full_df[full_df["ground_truth"] == 1]
     fp = full_df[full_df["ground_truth"] == 0]
-
     if len(tp) == 0:
         show_error("No true positive samples found. Check matching.")
         return None
-
     if len(tp) > len(fp):
         tp = tp.sample(n=len(fp), random_state=Random_seed)
     elif len(fp) > len(tp):
@@ -709,17 +679,13 @@ def calibrate_with_dynamic_threshold(
     balanced_df = pd.concat([tp, fp], ignore_index=True).sample(
         frac=1, random_state=Random_seed
     )
-
     if balanced_df.empty:
         show_error("Balanced training set is empty. Cannot train classifier.")
         return None
-
     print(
         f"Balanced training set size: {len(balanced_df)} (TP: {len(tp)}, FP: {len(fp)})"
     )
-
     calib_pbar = progress(total=0, desc="Calibrating dynamic threshold")
-
     feature_cols = [
         "confidence",
         "size",
@@ -753,20 +719,16 @@ def calibrate_with_dynamic_threshold(
     ]
     X = balanced_df[feature_cols]
     y = balanced_df["ground_truth"]
-
     X_train, X_val, y_train, y_val = train_test_split(
         X, y, test_size=0.2, random_state=Random_seed, stratify=y
     )
-
     print(f"Training set size before cleaning: {len(X_train)}")
-
     temp_rf = RandomForestClassifier(
         n_estimators=500,
         criterion="log_loss",
         random_state=Random_seed,
         n_jobs=-1,
     )
-
     oof_pred = cross_val_predict(
         temp_rf,
         X_train,
@@ -774,28 +736,22 @@ def calibrate_with_dynamic_threshold(
         cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=Random_seed),
         method="predict",
     )
-
     y_train_array = y_train.values
     keep_mask = []
-
     for i in range(len(X_train)):
         true_label = y_train_array[i]
         pred_label = oof_pred[i]
         is_correct = pred_label == true_label
         keep_mask.append(is_correct)
-
     keep_mask = np.array(keep_mask)
     X_train_cleaned = X_train[keep_mask]
     y_train_cleaned = y_train[keep_mask]
-
     print(f"Training set size after cleaning: {len(X_train_cleaned)}")
     print(
         f"Dropped {len(X_train) - len(X_train_cleaned)} samples ({(1 - len(X_train_cleaned)/len(X_train))*100:.1f}%)"
     )
-
     min_samples_leaf_value = max(1, int(0.03 * len(X_train_cleaned)))
     print(f"min_samples_leaf set to: {min_samples_leaf_value}")
-
     final_rf = RandomForestClassifier(
         n_estimators=500,
         criterion="log_loss",
@@ -805,22 +761,16 @@ def calibrate_with_dynamic_threshold(
         n_jobs=-1,
         oob_score=True,
     )
-
     final_rf.fit(X_train_cleaned, y_train_cleaned)
-
     y_val_pred = final_rf.predict(X_val)
     val_f1 = f1_score(y_val, y_val_pred)
-
     calib_pbar.close()
-
     print("\n========== FINAL RESULTS ==========")
     print(f"Final model trained on {len(X_train_cleaned)} clean samples")
     print(f"Validation F1 Score: {val_f1:.4f}")
     print(f"OOB Score (on cleaned data): {final_rf.oob_score_:.4f}")
-
     print("Testing on test tiles with different blurs...")
     results = []
-
     with progress(total=len(test_data) * len(sigmas), desc="Testing") as pbar:
         for entry in test_data:
             tile_gray = entry["tile_gray"]
@@ -880,7 +830,6 @@ def calibrate_with_dynamic_threshold(
                         pred_count = np.sum(y_pred)
                     else:
                         pred_count = 0
-
                 results.append(
                     {
                         "sigma": sigma,
@@ -890,7 +839,6 @@ def calibrate_with_dynamic_threshold(
                     }
                 )
                 pbar.update(1)
-
     results_df = pd.DataFrame(results)
     mape_per_sigma = {}
     for sigma in sigmas:
@@ -905,16 +853,12 @@ def calibrate_with_dynamic_threshold(
         else:
             mape = np.nan
         mape_per_sigma[sigma] = mape
-
     subfolder = create_unique_subfolder(str(Save_folder), str(Experiment_name))
     dynamic_folder = os.path.join(subfolder, "Dynamic Confidence Threshold")
     os.makedirs(dynamic_folder, exist_ok=True)
-
     model_path = os.path.join(dynamic_folder, "dynamic_threshold_rf.pkl")
     with open(model_path, "wb") as f:
         pickle.dump(final_rf, f)
-
-    # Save ground truth boxes per frame
     ref_boxes = []
     for frame, boxes in boxes_per_frame.items():
         for x1, x2, y1, y2 in boxes:
@@ -925,7 +869,6 @@ def calibrate_with_dynamic_threshold(
         ).to_csv(
             os.path.join(dynamic_folder, "reference_boxes.csv"), index=False
         )
-
     sns.set(rc={"figure.dpi": 150, "savefig.dpi": 150})
     for sigma in sigmas:
         sub = results_df[results_df["sigma"] == sigma]
@@ -957,7 +900,6 @@ def calibrate_with_dynamic_threshold(
         plot_path = os.path.join(dynamic_folder, f"scatter_sigma_{sigma}.png")
         fig.savefig(plot_path, bbox_inches="tight")
         plt.close(fig)
-
     current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
     metadata = f"""Experiment time: {current_date}
 Calibration method: dynamic threshold (Random Forest with noise cleaning) using GROUND TRUTH BOXES
@@ -984,7 +926,6 @@ Per-frame TP counts after balancing:
         if isinstance(df, pd.DataFrame):
             tp_count = df["ground_truth"].sum()
             metadata += f"  Frame {frame}: {tp_count} TP samples\n"
-
     metadata += f"""
 Random Forest parameters:
   n_estimators: 500
@@ -1001,14 +942,11 @@ Per-sigma MAPE (over tiles with gt>0):
 """
     for sigma, mape in mape_per_sigma.items():
         metadata += f"  Blur strength {sigma}: {mape:.2f}%\n"
-
     metadata_path = os.path.join(dynamic_folder, "metadata.txt")
     with open(metadata_path, "w", encoding="utf-8") as f:
         f.write(metadata)
-
     viewer.window._status_bar._toggle_activity_dock(False)
     show_info("Dynamic threshold calibration completed.")
-
     summary = f"Dynamic threshold calibrated. Random Forest trained on {len(X_train_cleaned)} clean samples.\n"
     for sigma, mape in mape_per_sigma.items():
         summary += f"Blur strength {sigma} MAPE: {mape:.2f}%\n"
