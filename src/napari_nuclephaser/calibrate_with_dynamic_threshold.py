@@ -242,9 +242,9 @@ def match_boxes_to_boxes(
     gt_boxes,
     det_boxes,
     det_confidences=None,
-    expand_scale=1.5,  # increased from 1.05
-    max_norm_dist=0.8,  # increased from 0.6
-    max_area_ratio=2.0,
+    expand_scale=1.5,
+    max_norm_dist=1e9,  # effectively disabled
+    max_area_ratio=1e9,  # effectively disabled
 ):
     N_gt = len(gt_boxes)
     M_det = len(det_boxes)
@@ -261,7 +261,6 @@ def match_boxes_to_boxes(
         det_diags.append(diag)
         det_areas.append(area)
 
-    # Expand detection boxes for candidate query
     expanded_det_boxes = []
     for x1, x2, y1, y2 in det_boxes:
         w = x2 - x1
@@ -282,8 +281,6 @@ def match_boxes_to_boxes(
     tree = STRtree(det_geoms)
 
     cost_matrix = np.full((N_gt, M_det), 1e9, dtype=np.float64)
-    norm_dist_matrix = np.full((N_gt, M_det), np.inf, dtype=np.float64)
-    area_ratio_matrix = np.full((N_gt, M_det), np.inf, dtype=np.float64)
 
     for i, (gx1, gx2, gy1, gy2) in enumerate(gt_boxes):
         g_cx = (gx1 + gx2) / 2
@@ -300,23 +297,20 @@ def match_boxes_to_boxes(
                 d_area = det_areas[j]
                 area_ratio = max(d_area, g_area) / (min(d_area, g_area) + 1e-6)
                 area_penalty = np.clip(
-                    area_ratio - 1.0, 0, max_area_ratio - 1
-                ) / (max_area_ratio - 1)
+                    area_ratio - 1.0, 0, 10.0
+                )  # cap to avoid extreme values
                 conf = (
                     det_confidences[j] if det_confidences is not None else 1.0
                 )
                 conf_cost = 1.0 - conf
+                # cost combines distance (0.45), confidence (0.1), area similarity (0.45)
                 cost = 0.45 * norm_dist + 0.1 * conf_cost + 0.45 * area_penalty
                 cost_matrix[i, j] = cost
-                norm_dist_matrix[i, j] = norm_dist
-                area_ratio_matrix[i, j] = area_ratio
 
     row_ind, col_ind = linear_sum_assignment(cost_matrix)
     matched_detections = [0] * M_det
     for i, j in zip(row_ind, col_ind, strict=False):
-        nd = norm_dist_matrix[i, j]
-        ar = area_ratio_matrix[i, j]
-        if nd <= max_norm_dist and ar <= max_area_ratio:
+        if cost_matrix[i, j] < 1e9:  # valid candidate existed
             matched_detections[j] = 1
     return matched_detections
 
