@@ -445,15 +445,18 @@ def calibrate_with_dynamic_threshold(
     if not shapes_data:
         show_error("Shapes layer is empty!")
         return None
+
     boxes_per_frame = defaultdict(list)
     for poly in shapes_data:
         if len(poly) < 3:
             continue
         (x1, x2, y1, y2), frame = get_bbox_from_polygon(poly)
         boxes_per_frame[frame].append((x1, x2, y1, y2))
+
     if not boxes_per_frame:
         show_error("No valid bounding boxes found in Shapes layer.")
         return None
+
     if image_data.ndim == 2 or (
         image_data.ndim == 3 and image_data.shape[-1] in (1, 3, 4)
     ):
@@ -469,22 +472,27 @@ def calibrate_with_dynamic_threshold(
     else:
         show_error("Unsupported image dimensions.")
         return None
+
     frames_with_images = [t for t in range(n_frames) if t in boxes_per_frame]
     if not frames_with_images:
         show_error("No frames with matching ground truth boxes found.")
         return None
+
     sigmas = list(range(Max_blur_strength + 1))
     if not sigmas:
         show_error("Max_blur_strength must be >= 0.")
         return None
+
     print("Initialising model with confidence=0.01 ...")
     phase_model_low, model_type = initialize_model(
         str(Phase_model), 0.01, cuda_available
     )
     print(f"Model ready: {model_type}, device: {cuda_available}")
+
     calib_data = []
     test_data = []
     viewer.window._status_bar._toggle_activity_dock(True)
+
     with progress(
         total=len(frames_with_images), desc="Splitting frames"
     ) as pbar:
@@ -494,6 +502,7 @@ def calibrate_with_dynamic_threshold(
             if not frame_boxes:
                 pbar.update(1)
                 continue
+
             if img.ndim == 3 and img.shape[-1] == 3:
                 phase_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
             elif img.ndim == 3 and img.shape[-1] == 1:
@@ -502,9 +511,12 @@ def calibrate_with_dynamic_threshold(
                 phase_gray = img
             else:
                 phase_gray = img
+
             if phase_gray.dtype == np.uint16:
                 phase_gray = cv2.convertScaleAbs(phase_gray, alpha=255 / 65535)
+
             rgb_img = cv2.cvtColor(phase_gray, cv2.COLOR_GRAY2RGB)
+
             all_tiles, all_gt_counts = _split_image_and_boxes(
                 rgb_img, frame_boxes, Division_size
             )
@@ -512,6 +524,7 @@ def calibrate_with_dynamic_threshold(
             if n_tiles == 0:
                 pbar.update(1)
                 continue
+
             tile_boxes = []
             for i in range(n_tiles):
                 left = (
@@ -532,41 +545,64 @@ def calibrate_with_dynamic_threshold(
                             (x1 - left, x2 - left, y1 - upper, y2 - upper)
                         )
                 tile_boxes.append(boxes_in_tile)
+
             np.random.seed(Random_seed)
             calib_indices = np.random.choice(
                 n_tiles, int(n_tiles * Calibration_proportion), replace=False
             )
             test_indices = np.setdiff1d(np.arange(n_tiles), calib_indices)
+
             for idx in calib_indices:
                 tile_rgb = all_tiles[idx]
                 tile_gray = cv2.cvtColor(tile_rgb, cv2.COLOR_RGB2GRAY)
+                left = (
+                    idx % (rgb_img.shape[1] // Division_size)
+                ) * Division_size
+                upper = (
+                    idx // (rgb_img.shape[1] // Division_size)
+                ) * Division_size
                 calib_data.append(
                     {
                         "frame_idx": t,
                         "tile_gray": tile_gray,
                         "gt_boxes": tile_boxes[idx],
                         "gt_count": len(tile_boxes[idx]),
+                        "tile_left": left,
+                        "tile_upper": upper,
                     }
                 )
+
             for idx in test_indices:
                 tile_rgb = all_tiles[idx]
                 tile_gray = cv2.cvtColor(tile_rgb, cv2.COLOR_RGB2GRAY)
+                left = (
+                    idx % (rgb_img.shape[1] // Division_size)
+                ) * Division_size
+                upper = (
+                    idx // (rgb_img.shape[1] // Division_size)
+                ) * Division_size
                 test_data.append(
                     {
                         "frame_idx": t,
                         "tile_gray": tile_gray,
                         "gt_boxes": tile_boxes[idx],
                         "gt_count": len(tile_boxes[idx]),
+                        "tile_left": left,
+                        "tile_upper": upper,
                     }
                 )
+
             pbar.update(1)
+
     if not calib_data:
         show_error(
             "No calibration tiles found (no ground truth boxes in any tile)."
         )
         return None
+
     print("Extracting features from calibration tiles...")
     frame_detections = defaultdict(list)
+
     total_steps = len(calib_data) * len(sigmas)
     with progress(
         total=total_steps, desc="Calibration feature extraction"
@@ -575,12 +611,16 @@ def calibrate_with_dynamic_threshold(
             frame = entry["frame_idx"]
             tile_gray = entry["tile_gray"]
             gt_boxes = entry["gt_boxes"]
+            tile_left = entry["tile_left"]
+            tile_upper = entry["tile_upper"]
+
             for sigma in sigmas:
                 np.random.seed(Random_seed + sigma + frame)
                 aug_tile = apply_random_augmentations(
                     tile_gray, gamma_range=(0.5, 1.5)
                 )
                 blurred = blur_image(aug_tile, sigma)
+
                 dets = extract_detections_only_boxes(
                     blurred,
                     phase_model_low,
@@ -593,26 +633,36 @@ def calibrate_with_dynamic_threshold(
                 )
                 for det in dets:
                     det["gt_boxes"] = gt_boxes
+                    det["tile_origin"] = (tile_left, tile_upper)
                     frame_detections[frame].append(det)
                 pbar.update(1)
+
     if not frame_detections:
         show_error("No detections found in any calibration tile.")
         return None
+
     print("Matching detections to ground truth boxes...")
     samples_per_frame = defaultdict(list)
-    debug_info = []
+    debug_info = (
+        []
+    )  # (frame, gt_boxes, det_boxes, matched, tile_left, tile_upper)
+
     for frame, dets in frame_detections.items():
         tile_groups = defaultdict(list)
         for det in dets:
             key = frozenset(det["gt_boxes"])
             tile_groups[key].append(det)
+
         for gt_boxes_key, group_dets in tile_groups.items():
             gt_boxes = list(gt_boxes_key)
+            # get tile origin from first detection (all share same origin)
+            tile_left, tile_upper = group_dets[0]["tile_origin"]
             if not gt_boxes:
                 for det in group_dets:
                     det["ground_truth"] = 0
                     samples_per_frame[frame].append(det)
                 continue
+
             det_boxes = [d["box"] for d in group_dets]
             confs = [d["confidence"] for d in group_dets]
             matched = match_boxes_to_boxes(
@@ -626,21 +676,30 @@ def calibrate_with_dynamic_threshold(
             for det, gt in zip(group_dets, matched, strict=False):
                 det["ground_truth"] = gt
                 samples_per_frame[frame].append(det)
-            debug_info.append((frame, gt_boxes, det_boxes, matched))
+
+            debug_info.append(
+                (frame, gt_boxes, det_boxes, matched, tile_left, tile_upper)
+            )
+
     if Debug:
         print("Creating debug Shapes layer with matched boxes...")
         matched_vertices = []
-        for frame, _gt_boxes, det_boxes, matched in debug_info:
+        for frame, _, det_boxes, matched, tile_left, tile_upper in debug_info:
             for det_box, m in zip(det_boxes, matched, strict=False):
                 if m:
                     x1, x2, y1, y2 = det_box
+                    # shift to global coordinates
+                    gx1 = x1 + tile_left
+                    gx2 = x2 + tile_left
+                    gy1 = y1 + tile_upper
+                    gy2 = y2 + tile_upper
                     matched_vertices.append(
                         np.array(
                             [
-                                [frame, y1, x1],
-                                [frame, y1, x2],
-                                [frame, y2, x2],
-                                [frame, y2, x1],
+                                [frame, gy1, gx1],
+                                [frame, gy1, gx2],
+                                [frame, gy2, gx2],
+                                [frame, gy2, gx1],
                             ]
                         )
                     )
