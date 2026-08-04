@@ -13,7 +13,7 @@ import pandas as pd
 import seaborn as sns
 from magicgui import magic_factory
 from matplotlib import pyplot as plt
-from napari.layers import Image, Points
+from napari.layers import Image, Shapes
 from napari.utils import progress
 from napari.utils.notifications import show_error, show_info
 from sahi.predict import get_sliced_prediction
@@ -40,24 +40,45 @@ cuda_available = "cuda:0" if cuda.is_available() else "cpu"
 
 models_folder = pathlib.Path(pathlib.Path(__file__).parent / "models")
 first_model = next((x for x in models_folder.iterdir() if x.is_file()), None)
-model_type_list = ("ultralytics", "yolov5", "yolov8", "yolov11", "yolo11")
 
 
-# ---------- Helpers (unchanged) ----------
 def _ensure_numpy(arr):
     if hasattr(arr, "__module__") and arr.__module__.startswith("dask"):
         return arr.compute()
     return arr
 
 
-def _split_image_and_points(
-    image: np.ndarray, points: list[tuple[float, float]], window_size: int
+def get_bbox_from_polygon(polygon):
+    """
+    Extract (x1, x2, y1, y2) from a napari polygon.
+    Polygon can be 2D (N,2) or 3D (N,3) with columns (z, y, x).
+    Returns (x1, x2, y1, y2) and frame index (0 if 2D).
+    """
+    pts = polygon if isinstance(polygon, np.ndarray) else np.array(polygon)
+
+    if pts.ndim == 2 and pts.shape[1] == 3:
+        # 3D points: columns (frame, y, x)
+        frame = int(pts[0, 0])
+        y_vals = pts[:, 1]
+        x_vals = pts[:, 2]
+    else:
+        frame = 0
+        y_vals = pts[:, 0]
+        x_vals = pts[:, 1]
+
+    y1, y2 = int(np.min(y_vals)), int(np.max(y_vals))
+    x1, x2 = int(np.min(x_vals)), int(np.max(x_vals))
+    return (x1, x2, y1, y2), frame
+
+
+def _split_image_and_boxes(
+    image: np.ndarray, boxes: list[tuple[int, int, int, int]], window_size: int
 ) -> tuple[list[np.ndarray], list[int]]:
     height, width, _ = image.shape
     num_tiles_height = height // window_size
     num_tiles_width = width // window_size
     cropped_images = []
-    points_per_tile = []
+    boxes_per_tile = []
 
     for i in range(num_tiles_height):
         for j in range(num_tiles_width):
@@ -67,49 +88,17 @@ def _split_image_and_points(
             lower = upper + window_size
             cropped = image[upper:lower, left:right, :]
             cropped_images.append(cropped)
-            tile_points_count = 0
-            for y, x in points:
-                if left <= x < right and upper <= y < lower:
-                    tile_points_count += 1
-            points_per_tile.append(tile_points_count)
+            tile_boxes_count = 0
+            for x1, x2, y1, y2 in boxes:
+                cx = (x1 + x2) / 2
+                cy = (y1 + y2) / 2
+                if left <= cx < right and upper <= cy < lower:
+                    tile_boxes_count += 1
+            boxes_per_tile.append(tile_boxes_count)
 
-    return cropped_images, points_per_tile
-
-
-def _prepare_frame(
-    image: np.ndarray,
-    points_2d: list[tuple[float, float]],
-    division_size: int,
-    calibration_proportion: float,
-    random_seed: int,
-) -> tuple[list[np.ndarray], list[int], list[np.ndarray], list[int]]:
-    image = _ensure_numpy(image)
-    if len(image.shape) == 2:
-        image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
-    if image.dtype == np.uint16:
-        image = cv2.convertScaleAbs(image, alpha=255 / 65535).astype(np.uint8)
-
-    all_tiles, all_gt_counts = _split_image_and_points(
-        image, points_2d, division_size
-    )
-    n_tiles = len(all_tiles)
-    if n_tiles == 0:
-        return [], [], [], []
-
-    n_calib = int(n_tiles * calibration_proportion)
-    np.random.seed(random_seed)
-    calib_indices = np.random.choice(n_tiles, n_calib, replace=False)
-    test_indices = np.setdiff1d(np.arange(n_tiles), calib_indices)
-
-    calib_tiles = [all_tiles[i] for i in calib_indices]
-    calib_gt = [all_gt_counts[i] for i in calib_indices]
-    test_tiles = [all_tiles[i] for i in test_indices]
-    test_gt = [all_gt_counts[i] for i in test_indices]
-
-    return calib_tiles, calib_gt, test_tiles, test_gt
+    return cropped_images, boxes_per_tile
 
 
-# ---------- Dynamic threshold helpers ----------
 def blur_image(image: np.ndarray, sigma: float = 5.0) -> np.ndarray:
     if sigma == 0:
         return image
@@ -119,7 +108,6 @@ def blur_image(image: np.ndarray, sigma: float = 5.0) -> np.ndarray:
         raise ValueError("Input image must have dtype uint8.")
     if image.ndim not in (2, 3):
         raise ValueError("Image must be 2D or 3D.")
-
     img_float = image.astype(np.float32)
     sigma_blur = sigma if image.ndim == 2 else (sigma, sigma, 0)
     blurred_float = gaussian_filter(
@@ -131,7 +119,6 @@ def blur_image(image: np.ndarray, sigma: float = 5.0) -> np.ndarray:
 def apply_random_augmentations(
     image, gamma_range=(0.7, 1.3), noise_sigma_range=(2, 15)
 ):
-    # Augmentations disabled (return original)
     return image
 
 
@@ -266,29 +253,33 @@ def extract_all_features(
     }
 
 
-# ---------- REVISED MATCHING FUNCTION ----------
-def match_points_to_boxes(
-    points,
-    boxes,
-    confidences=None,
+def match_boxes_to_boxes(
+    gt_boxes,
+    det_boxes,
+    det_confidences=None,
     expand_scale=1.05,
     max_norm_dist=0.6,
-    optimal_area=None,
-    max_size_deviation=1.2,
+    max_area_ratio=2.0,
 ):
-    """
-    Match ground truth points to detection boxes.
-    Uses weighted cost: distance (0.5), confidence (0.25), size (0.25).
-    Rejects matches if normalized distance > max_norm_dist or size penalty > max_size_deviation.
-    """
-    N = len(points)
-    M = len(boxes)
-    if N == 0 or M == 0:
-        return [0] * M
+    N_gt = len(gt_boxes)
+    M_det = len(det_boxes)
+    if N_gt == 0 or M_det == 0:
+        return [0] * M_det
 
-    # Expand boxes for "inside" check
-    expanded_boxes = []
-    for x1, x2, y1, y2 in boxes:
+    det_centers = []
+    det_diags = []
+    det_areas = []
+    for x1, x2, y1, y2 in det_boxes:
+        cx = (x1 + x2) / 2
+        cy = (y1 + y2) / 2
+        diag = np.hypot(x2 - x1, y2 - y1) + 1e-6
+        area = (x2 - x1) * (y2 - y1)
+        det_centers.append((cx, cy))
+        det_diags.append(diag)
+        det_areas.append(area)
+
+    expanded_det_boxes = []
+    for x1, x2, y1, y2 in det_boxes:
         w = x2 - x1
         h = y2 - y1
         cx = (x1 + x2) / 2
@@ -299,87 +290,59 @@ def match_points_to_boxes(
         ex2 = int(cx + new_w / 2)
         ey1 = int(cy - new_h / 2)
         ey2 = int(cy + new_h / 2)
-        expanded_boxes.append((ex1, ex2, ey1, ey2))
+        expanded_det_boxes.append((ex1, ex2, ey1, ey2))
 
-    # Build spatial index
-    box_geoms = [box(x1, y1, x2, y2) for (x1, x2, y1, y2) in expanded_boxes]
-    tree = STRtree(box_geoms)
+    det_geoms = [
+        box(x1, y1, x2, y2) for (x1, x2, y1, y2) in expanded_det_boxes
+    ]
+    tree = STRtree(det_geoms)
 
-    # Pre‑compute box centers and diagonals
-    centers = []
-    diags = []
-    areas = []
-    for x1, x2, y1, y2 in boxes:
-        cx = (x1 + x2) / 2
-        cy = (y1 + y2) / 2
-        diag = np.hypot(x2 - x1, y2 - y1) + 1e-6
-        area = (x2 - x1) * (y2 - y1)
-        centers.append((cx, cy))
-        diags.append(diag)
-        areas.append(area)
+    cost_matrix = np.full((N_gt, M_det), 1e9, dtype=np.float64)
+    norm_dist_matrix = np.full((N_gt, M_det), np.inf, dtype=np.float64)
+    area_ratio_matrix = np.full((N_gt, M_det), np.inf, dtype=np.float64)
 
-    # Collect candidates: (point_idx, box_idx, norm_dist, conf_cost, size_penalty)
-    candidates = []
-    for i, (py, px) in enumerate(points):
-        pt = Point(px, py)
-        candidate_idxs = tree.query(pt, predicate="intersects")
+    for i, (gx1, gx2, gy1, gy2) in enumerate(gt_boxes):
+        g_cx = (gx1 + gx2) / 2
+        g_cy = (gy1 + gy2) / 2
+        g_area = (gx2 - gx1) * (gy2 - gy1)
+        gt_point = Point(g_cx, g_cy)
+        candidate_idxs = tree.query(gt_point, predicate="intersects")
         for j in candidate_idxs:
-            ex1, ex2, ey1, ey2 = expanded_boxes[j]
-            if ex1 <= px <= ex2 and ey1 <= py <= ey2:
-                cx, cy = centers[j]
-                dist = np.hypot(px - cx, py - cy)
-                norm_dist = dist / diags[j]
-                # Confidence cost
-                conf = confidences[j] if confidences is not None else 1.0
+            ex1, ex2, ey1, ey2 = expanded_det_boxes[j]
+            if ex1 <= g_cx <= ex2 and ey1 <= g_cy <= ey2:
+                dcx, dcy = det_centers[j]
+                dist = np.hypot(g_cx - dcx, g_cy - dcy)
+                norm_dist = dist / det_diags[j]
+                d_area = det_areas[j]
+                area_ratio = max(d_area, g_area) / (min(d_area, g_area) + 1e-6)
+                area_penalty = np.clip(
+                    area_ratio - 1.0, 0, max_area_ratio - 1
+                ) / (max_area_ratio - 1)
+                conf = (
+                    det_confidences[j] if det_confidences is not None else 1.0
+                )
                 conf_cost = 1.0 - conf
-                # Size penalty
-                if optimal_area is not None:
-                    size_penalty = abs(areas[j] - optimal_area) / (
-                        optimal_area + 1e-6
-                    )
-                    size_penalty = min(size_penalty, 2.0)  # clip
-                else:
-                    size_penalty = 0.0
-                # Only keep if distance not too far (avoid filling matrix with huge numbers)
-                if norm_dist <= max_norm_dist * 2.0:
-                    candidates.append(
-                        (i, j, norm_dist, conf_cost, size_penalty)
-                    )
+                cost = (
+                    (1 / 3) * norm_dist
+                    + (1 / 3) * conf_cost
+                    + (1 / 3) * area_penalty
+                )
+                cost_matrix[i, j] = cost
+                norm_dist_matrix[i, j] = norm_dist
+                area_ratio_matrix[i, j] = area_ratio
 
-    if not candidates:
-        return [0] * M
-
-    # Build cost matrix (N x M)
-    cost_matrix = np.full((N, M), 1e9, dtype=np.float64)
-    # Store norm_dist and size_penalty for final filtering
-    norm_dist_matrix = np.full((N, M), np.inf, dtype=np.float64)
-    size_penalty_matrix = np.full((N, M), np.inf, dtype=np.float64)
-
-    w_dist, w_conf, w_size = 0.5, 0.25, 0.25
-
-    for i, j, nd, cc, sp in candidates:
-        cost_matrix[i, j] = w_dist * nd + w_conf * cc + w_size * sp
-        norm_dist_matrix[i, j] = nd
-        size_penalty_matrix[i, j] = sp
-
-    # Hungarian assignment
     row_ind, col_ind = linear_sum_assignment(cost_matrix)
 
-    matched_boxes = [0] * M
+    matched_detections = [0] * M_det
     for i, j in zip(row_ind, col_ind, strict=False):
         nd = norm_dist_matrix[i, j]
-        sp = size_penalty_matrix[i, j]
-        # Accept only if distance and size penalty are within limits
-        if nd <= max_norm_dist:
-            if optimal_area is not None:
-                if sp <= max_size_deviation:
-                    matched_boxes[j] = 1
-            else:
-                matched_boxes[j] = 1
-    return matched_boxes
+        ar = area_ratio_matrix[i, j]
+        if nd <= max_norm_dist and ar <= max_area_ratio:
+            matched_detections[j] = 1
+    return matched_detections
 
 
-def extract_detections_only(
+def extract_detections_only_boxes(
     tile_phase_gray,
     phase_model,
     sahi_size,
@@ -389,10 +352,6 @@ def extract_detections_only(
     intersection_threshold,
     expand_scale=2.5,
 ):
-    """
-    Run SAHI prediction and extract detection boxes, confidences, and features.
-    Does NOT perform point matching – returns a list of dictionaries.
-    """
     phase_rgb = cv2.cvtColor(tile_phase_gray, cv2.COLOR_GRAY2RGB)
     result = get_sliced_prediction(
         phase_rgb,
@@ -421,7 +380,6 @@ def extract_detections_only(
         )
         bbox = (x1, x2, y1, y2)
         conf = det.score.value
-        # Extract features
         exp_x1, exp_x2, exp_y1, exp_y2 = expand_bbox(
             bbox, tile_phase_gray.shape, scale=expand_scale
         )
@@ -439,36 +397,6 @@ def extract_detections_only(
             }
         )
     return dets
-
-
-def rotate_tile_and_points(tile, points, angle_deg):
-    if angle_deg == 0:
-        return tile, points
-    h, w = tile.shape[:2]
-    if angle_deg == 90:
-        rotated = cv2.rotate(tile, cv2.ROTATE_90_CLOCKWISE)
-    elif angle_deg == 180:
-        rotated = cv2.rotate(tile, cv2.ROTATE_180)
-    elif angle_deg == 270:
-        rotated = cv2.rotate(tile, cv2.ROTATE_90_COUNTERCLOCKWISE)
-    else:
-        raise ValueError("angle_deg must be 0, 90, 180, or 270")
-
-    new_points = []
-    for y, x in points:
-        if angle_deg == 90:
-            new_y = x
-            new_x = h - 1 - y
-        elif angle_deg == 180:
-            new_y = h - 1 - y
-            new_x = w - 1 - x
-        else:  # 270
-            new_y = w - 1 - x
-            new_x = y
-        new_y = max(0, min(h - 1, int(round(new_y))))
-        new_x = max(0, min(w - 1, int(round(new_x))))
-        new_points.append((new_y, new_x))
-    return rotated, new_points
 
 
 @magic_factory(
@@ -512,9 +440,9 @@ def rotate_tile_and_points(tile, points, angle_deg):
     auto_call=False,
     result_widget=True,
 )
-def calibrate_with_dynamic_threshold(
+def calibrate_with_dynamic_threshold_boxes(
     Select_Phase_stack: Image,
-    Select_Points_layer: Points,
+    Select_Shapes_layer: Shapes,
     viewer: napari.Viewer,
     Phase_model=first_model,
     Division_size=640,
@@ -531,17 +459,28 @@ def calibrate_with_dynamic_threshold(
     Sahi_overlap: float = 0.2,
 ):
     """
-    Calibrate a dynamic threshold using a random forest classifier.
-    Replaces fixed confidence threshold with feature-based filtering.
+    Calibrate a dynamic threshold using ground truth bounding boxes.
+    Supports stacked images with per-frame shapes (3D polygons).
     """
-    # ---------- Input validation ----------
     image_data = _ensure_numpy(Select_Phase_stack.data)
-    points_data = _ensure_numpy(Select_Points_layer.data)
-
-    if len(points_data) == 0:
-        show_error("Points layer is empty!")
+    shapes_data = Select_Shapes_layer.data
+    if not shapes_data:
+        show_error("Shapes layer is empty!")
         return None
 
+    # Parse ground truth boxes per frame
+    boxes_per_frame = defaultdict(list)
+    for poly in shapes_data:
+        if len(poly) < 3:
+            continue
+        (x1, x2, y1, y2), frame = get_bbox_from_polygon(poly)
+        boxes_per_frame[frame].append((x1, x2, y1, y2))
+
+    if not boxes_per_frame:
+        show_error("No valid bounding boxes found in Shapes layer.")
+        return None
+
+    # Determine number of frames and extract images
     if image_data.ndim == 2 or (
         image_data.ndim == 3 and image_data.shape[-1] in (1, 3, 4)
     ):
@@ -558,33 +497,9 @@ def calibrate_with_dynamic_threshold(
         show_error("Unsupported image dimensions.")
         return None
 
-    if points_data.ndim == 2:
-        if points_data.shape[1] == 2:
-            if n_frames != 1:
-                show_error("Points have 2 columns but multiple frames.")
-                return None
-            points_per_frame = {0: [(y, x) for y, x in points_data]}
-        elif points_data.shape[1] == 3:
-            points_per_frame = {}
-            for pt in points_data:
-                t, y, x = int(pt[0]), pt[1], pt[2]
-                points_per_frame.setdefault(t, []).append((y, x))
-        else:
-            show_error(
-                f"Points layer has {points_data.shape[1]} columns. Expected 2 or 3."
-            )
-            return None
-    else:
-        show_error("Points layer must be 2D.")
-        return None
-
-    for t in range(n_frames):
-        if t not in points_per_frame:
-            points_per_frame[t] = []
-
-    frames_with_images = [t for t in range(n_frames) if t < len(images)]
+    frames_with_images = [t for t in range(n_frames) if t in boxes_per_frame]
     if not frames_with_images:
-        show_error("No valid frames found.")
+        show_error("No frames with matching ground truth boxes found.")
         return None
 
     sigmas = list(range(Max_blur_strength + 1))
@@ -592,17 +507,14 @@ def calibrate_with_dynamic_threshold(
         show_error("Max_blur_strength must be >= 0.")
         return None
 
-    # ---------- Initialise model (low confidence) ----------
     print("Initialising model with confidence=0.01 ...")
     phase_model_low, model_type = initialize_model(
         str(Phase_model), 0.01, cuda_available
     )
     print(f"Model ready: {model_type}, device: {cuda_available}")
 
-    # ---------- Split into tiles ----------
-    calib_data = []  # each: {frame_idx, tile_gray, points, gt_count}
-    test_data = []  # same
-
+    calib_data = []
+    test_data = []
     viewer.window._status_bar._toggle_activity_dock(True)
 
     with progress(
@@ -610,9 +522,11 @@ def calibrate_with_dynamic_threshold(
     ) as pbar:
         for t in frames_with_images:
             img = images[t]
-            pts = points_per_frame.get(t, [])
+            frame_boxes = boxes_per_frame[t]
+            if not frame_boxes:
+                pbar.update(1)
+                continue
 
-            # Extract grayscale phase image
             if img.ndim == 3 and img.shape[-1] == 3:
                 phase_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
             elif img.ndim == 3 and img.shape[-1] == 1:
@@ -620,22 +534,41 @@ def calibrate_with_dynamic_threshold(
             elif img.ndim == 2:
                 phase_gray = img
             else:
-                phase_gray = img  # fallback
+                phase_gray = img
 
             if phase_gray.dtype == np.uint16:
                 phase_gray = cv2.convertScaleAbs(phase_gray, alpha=255 / 65535)
 
-            # Build RGB version for splitting (points counting)
             rgb_img = cv2.cvtColor(phase_gray, cv2.COLOR_GRAY2RGB)
 
-            # Get tiles and their point counts
-            all_tiles, all_gt_counts = _split_image_and_points(
-                rgb_img, pts, Division_size
+            all_tiles, all_gt_counts = _split_image_and_boxes(
+                rgb_img, frame_boxes, Division_size
             )
             n_tiles = len(all_tiles)
             if n_tiles == 0:
                 pbar.update(1)
                 continue
+
+            tile_boxes = []
+            for i in range(n_tiles):
+                left = (
+                    i % (rgb_img.shape[1] // Division_size)
+                ) * Division_size
+                upper = (
+                    i // (rgb_img.shape[1] // Division_size)
+                ) * Division_size
+                boxes_in_tile = []
+                for x1, x2, y1, y2 in frame_boxes:
+                    cx = (x1 + x2) / 2
+                    cy = (y1 + y2) / 2
+                    if (
+                        left <= cx < left + Division_size
+                        and upper <= cy < upper + Division_size
+                    ):
+                        boxes_in_tile.append(
+                            (x1 - left, x2 - left, y1 - upper, y2 - upper)
+                        )
+                tile_boxes.append(boxes_in_tile)
 
             np.random.seed(Random_seed)
             calib_indices = np.random.choice(
@@ -646,63 +579,36 @@ def calibrate_with_dynamic_threshold(
             for idx in calib_indices:
                 tile_rgb = all_tiles[idx]
                 tile_gray = cv2.cvtColor(tile_rgb, cv2.COLOR_RGB2GRAY)
-                left = (
-                    idx % (rgb_img.shape[1] // Division_size)
-                ) * Division_size
-                upper = (
-                    idx // (rgb_img.shape[1] // Division_size)
-                ) * Division_size
-                tile_points = []
-                for y, x in pts:
-                    if (
-                        left <= x < left + Division_size
-                        and upper <= y < upper + Division_size
-                    ):
-                        tile_points.append((y - upper, x - left))
                 calib_data.append(
                     {
                         "frame_idx": t,
                         "tile_gray": tile_gray,
-                        "points": tile_points,
-                        "gt_count": len(tile_points),
+                        "gt_boxes": tile_boxes[idx],
+                        "gt_count": len(tile_boxes[idx]),
                     }
                 )
 
             for idx in test_indices:
                 tile_rgb = all_tiles[idx]
                 tile_gray = cv2.cvtColor(tile_rgb, cv2.COLOR_RGB2GRAY)
-                left = (
-                    idx % (rgb_img.shape[1] // Division_size)
-                ) * Division_size
-                upper = (
-                    idx // (rgb_img.shape[1] // Division_size)
-                ) * Division_size
-                tile_points = []
-                for y, x in pts:
-                    if (
-                        left <= x < left + Division_size
-                        and upper <= y < upper + Division_size
-                    ):
-                        tile_points.append((y - upper, x - left))
                 test_data.append(
                     {
                         "frame_idx": t,
                         "tile_gray": tile_gray,
-                        "points": tile_points,
-                        "gt_count": len(tile_points),
+                        "gt_boxes": tile_boxes[idx],
+                        "gt_count": len(tile_boxes[idx]),
                     }
                 )
 
             pbar.update(1)
 
     if not calib_data:
-        show_error("No calibration tiles found.")
+        show_error(
+            "No calibration tiles found (no ground truth boxes in any tile)."
+        )
         return None
 
-    # ---------- Extract detections WITHOUT matching, store per frame ----------
-    print(
-        "Extracting features from calibration tiles (including blur augmentation)..."
-    )
+    print("Extracting features from calibration tiles...")
     frame_detections = defaultdict(list)
 
     total_steps = len(calib_data) * len(sigmas)
@@ -712,7 +618,7 @@ def calibrate_with_dynamic_threshold(
         for entry in calib_data:
             frame = entry["frame_idx"]
             tile_gray = entry["tile_gray"]
-            points = entry["points"]
+            gt_boxes = entry["gt_boxes"]
 
             for sigma in sigmas:
                 np.random.seed(Random_seed + sigma + frame)
@@ -721,7 +627,7 @@ def calibrate_with_dynamic_threshold(
                 )
                 blurred = blur_image(aug_tile, sigma)
 
-                dets = extract_detections_only(
+                dets = extract_detections_only_boxes(
                     blurred,
                     phase_model_low,
                     Sahi_size,
@@ -732,7 +638,7 @@ def calibrate_with_dynamic_threshold(
                     expand_scale=2.5,
                 )
                 for det in dets:
-                    det["tile_points"] = points
+                    det["gt_boxes"] = gt_boxes
                     frame_detections[frame].append(det)
                 pbar.update(1)
 
@@ -740,66 +646,37 @@ def calibrate_with_dynamic_threshold(
         show_error("No detections found in any calibration tile.")
         return None
 
-    # ---------- Compute optimal area per frame (median of top 10% conf) ----------
-    print(
-        "Computing optimal box area per frame (median of top 10% confident detections)..."
-    )
-    optimal_areas = {}
-    for frame, dets in frame_detections.items():
-        if not dets:
-            continue
-        sorted_dets = sorted(dets, key=lambda d: d["confidence"], reverse=True)
-        top_n = max(1, int(0.1 * len(sorted_dets)))
-        top_dets = sorted_dets[:top_n]
-        areas = [
-            (d["box"][1] - d["box"][0]) * (d["box"][3] - d["box"][2])
-            for d in top_dets
-        ]
-        if areas:
-            optimal_areas[frame] = np.median(areas)
-        else:
-            optimal_areas[frame] = 0.0
-
-    print(f"Optimal areas per frame: {optimal_areas}")
-
-    # ---------- Match points to boxes using optimal area ----------
-    print("Matching points to boxes using optimal area...")
+    print("Matching detections to ground truth boxes...")
     samples_per_frame = defaultdict(list)
 
     for frame, dets in frame_detections.items():
-        if frame not in optimal_areas or optimal_areas[frame] == 0:
-            continue
-        opt_area = optimal_areas[frame]
-        # Group detections by tile
         tile_groups = defaultdict(list)
         for det in dets:
-            key = frozenset(det["tile_points"])
+            key = frozenset(det["gt_boxes"])
             tile_groups[key].append(det)
 
-        for points_key, group_dets in tile_groups.items():
-            points = list(points_key)
-            if not points:
+        for gt_boxes_key, group_dets in tile_groups.items():
+            gt_boxes = list(gt_boxes_key)
+            if not gt_boxes:
                 for det in group_dets:
                     det["ground_truth"] = 0
                     samples_per_frame[frame].append(det)
                 continue
 
-            boxes = [d["box"] for d in group_dets]
+            det_boxes = [d["box"] for d in group_dets]
             confs = [d["confidence"] for d in group_dets]
-            matched = match_points_to_boxes(
-                points,
-                boxes,
-                confs,
+            matched = match_boxes_to_boxes(
+                gt_boxes,
+                det_boxes,
+                det_confidences=confs,
                 expand_scale=1.05,
                 max_norm_dist=0.6,
-                optimal_area=opt_area,
-                max_size_deviation=1.2,
+                max_area_ratio=2.0,
             )
             for det, gt in zip(group_dets, matched, strict=False):
                 det["ground_truth"] = gt
                 samples_per_frame[frame].append(det)
 
-    # Build DataFrame from matched detections
     all_rows = []
     for _, dets in samples_per_frame.items():
         for det in dets:
@@ -813,19 +690,16 @@ def calibrate_with_dynamic_threshold(
             all_rows.append(row)
 
     if not all_rows:
-        show_error("No matching results after applying optimal area.")
+        show_error("No matching results after applying box matching.")
         return None
 
     full_df = pd.DataFrame(all_rows)
 
-    # ---------- Balance classes globally ----------
     tp = full_df[full_df["ground_truth"] == 1]
     fp = full_df[full_df["ground_truth"] == 0]
 
     if len(tp) == 0:
-        show_error(
-            "No true positive samples found. Check point-to-box matching."
-        )
+        show_error("No true positive samples found. Check matching.")
         return None
 
     if len(tp) > len(fp):
@@ -844,7 +718,6 @@ def calibrate_with_dynamic_threshold(
         f"Balanced training set size: {len(balanced_df)} (TP: {len(tp)}, FP: {len(fp)})"
     )
 
-    # ---------- Train Random Forest with noise cleaning ----------
     calib_pbar = progress(total=0, desc="Calibrating dynamic threshold")
 
     feature_cols = [
@@ -945,7 +818,6 @@ def calibrate_with_dynamic_threshold(
     print(f"Validation F1 Score: {val_f1:.4f}")
     print(f"OOB Score (on cleaned data): {final_rf.oob_score_:.4f}")
 
-    # ---------- Testing phase ----------
     print("Testing on test tiles with different blurs...")
     results = []
 
@@ -1034,7 +906,6 @@ def calibrate_with_dynamic_threshold(
             mape = np.nan
         mape_per_sigma[sigma] = mape
 
-    # ---------- Save results ----------
     subfolder = create_unique_subfolder(str(Save_folder), str(Experiment_name))
     dynamic_folder = os.path.join(subfolder, "Dynamic Confidence Threshold")
     os.makedirs(dynamic_folder, exist_ok=True)
@@ -1043,18 +914,17 @@ def calibrate_with_dynamic_threshold(
     with open(model_path, "wb") as f:
         pickle.dump(final_rf, f)
 
-    if points_data.ndim == 2:
-        if points_data.shape[1] == 2:
-            points_to_save = np.column_stack(
-                (np.zeros(len(points_data), dtype=int), points_data)
-            )
-        else:
-            points_to_save = points_data
-    else:
-        points_to_save = points_data
-    pd.DataFrame(points_to_save, columns=["frame", "y", "x"]).to_csv(
-        os.path.join(dynamic_folder, "reference_points.csv"), index=False
-    )
+    # Save ground truth boxes per frame
+    ref_boxes = []
+    for frame, boxes in boxes_per_frame.items():
+        for x1, x2, y1, y2 in boxes:
+            ref_boxes.append([frame, x1, x2, y1, y2])
+    if ref_boxes:
+        pd.DataFrame(
+            ref_boxes, columns=["frame", "x1", "x2", "y1", "y2"]
+        ).to_csv(
+            os.path.join(dynamic_folder, "reference_boxes.csv"), index=False
+        )
 
     sns.set(rc={"figure.dpi": 150, "savefig.dpi": 150})
     for sigma in sigmas:
@@ -1090,7 +960,7 @@ def calibrate_with_dynamic_threshold(
 
     current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
     metadata = f"""Experiment time: {current_date}
-Calibration method: dynamic threshold (Random Forest with noise cleaning)
+Calibration method: dynamic threshold (Random Forest with noise cleaning) using GROUND TRUTH BOXES
 Phase image stack: {Select_Phase_stack.name}, shape {image_data.shape}
 Phase model: {Phase_model.name} ({model_type})
 Division size: {Division_size}
