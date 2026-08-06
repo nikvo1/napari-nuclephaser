@@ -199,7 +199,9 @@ def _test_frame(
     Returns a DataFrame with columns: Frame, Ground_truth_count, Predicted_count.
     """
     results = []
-    with progress(total=len(tiles), desc=f"Frame {frame_idx} testing") as pbar:
+    with progress(
+        total=len(tiles), desc=f"Frame {frame_idx + 1} testing"
+    ) as pbar:
         for tile, gt in zip(tiles, ground_truth_counts, strict=False):
             result = get_sliced_prediction(
                 tile,
