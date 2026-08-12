@@ -6,9 +6,9 @@ import numpy as np
 import tqdm
 from PIL import Image
 from sahi.models.base import DetectionModel
-from sahi.postprocess.combine import POSTPROCESS_NAME_TO_CLASS
 from sahi.predict import (
     LOW_MODEL_CONFIDENCE,
+    POSTPROCESS_NAME_TO_CLASS,
     filter_predictions,
     get_prediction,
     slice_image,
