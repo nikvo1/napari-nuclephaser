@@ -50,7 +50,7 @@ def custom_get_sliced_prediction(
     border_touching_width: int = 5,
 ) -> PredictionResult:
     """Standard get_sliced_prediction function with edge cases filtering"""
-
+    print("I'm using custom function!")
     if batch_size < 1:
         raise ValueError(f"batch_size must be >= 1, got {batch_size}")
     if detection_model is None:
