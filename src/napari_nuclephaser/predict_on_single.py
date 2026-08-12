@@ -301,16 +301,16 @@ def compute_tile_features(tile_gray, detections, global_top10_area):
         "filter": "*.txt;*.pkl",
         "tooltip": "Select the TTA metadata file (.txt) or the dynamic threshold .pkl file, depending on the chosen mode.",
     },
+    Output_mode={
+        "choices": [
+            "Points only",
+            "Bounding boxes",
+            "Bounding boxes with confidence",
+        ],
+        "value": "Points only",
+        "tooltip": "Select the type of output layer to add to the viewer.",
+    },
     ADVANCED_SETTINGS={},
-    Generate_points={
-        "tooltip": "If chosen, Points layer will be created with point at the center of bounding box for each detection"
-    },
-    Generate_bbox={
-        "tooltip": "If chosen, Shapes layer will be created with rectangle representing bounding box of each detection"
-    },
-    Show_confidence={
-        "tooltip": "If chosen, each rectangle in Shapes layer will have confidence score of each detection printed above it"
-    },
     Confidence_threshold={
         "tooltip": "Parameter that determines how many detections will model return. Use calibration widgets to determine optimal threshold for your use case."
     },
@@ -354,9 +354,7 @@ def make_points(
     viewer: napari.Viewer,
     Select_model=first_model,
     Confidence_threshold: float = 0.2,
-    Generate_points=True,
-    Generate_bbox=False,
-    Show_confidence=False,
+    Output_mode: str = "Points only",
     Mode="Regular detection",
     Mode_file=pathlib.Path(),
     Save_result=False,
@@ -523,18 +521,18 @@ def make_points(
 
                 n_cells = len(points_aug)
 
-                if Generate_points or (
-                    not Generate_points and not Generate_bbox
-                ):
+                if Output_mode == "Points only":
                     viewer.add_points(
                         np.array(points_aug),
                         size=Points_size,
                         name=f"{n_cells} points ({aug_name}) {name}",
                     )
-
-                if Generate_bbox:
+                elif (
+                    Output_mode == "Bounding boxes"
+                    or Output_mode == "Bounding boxes with confidence"
+                ):
                     properties = {"score": scores_aug}
-                    if Show_confidence:
+                    if Output_mode == "Bounding boxes with confidence":
                         text_parameters = {
                             "string": "{score:.2f}",
                             "size": Score_text_size,
@@ -783,16 +781,18 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
 
         n_filtered = len(filtered_points)
 
-        if Generate_points or (not Generate_points and not Generate_bbox):
+        if Output_mode == "Points only":
             viewer.add_points(
                 np.array(filtered_points),
                 size=Points_size,
                 name=f"{n_filtered} points (dynamic) {name}",
             )
-
-        if Generate_bbox:
+        elif (
+            Output_mode == "Bounding boxes"
+            or Output_mode == "Bounding boxes with confidence"
+        ):
             properties = {"score": filtered_scores}
-            if Show_confidence:
+            if Output_mode == "Bounding boxes with confidence":
                 text_parameters = {
                     "string": "{score:.2f}",
                     "size": Score_text_size,
@@ -878,6 +878,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         viewer.window._status_bar._toggle_activity_dock(False)
         return None
 
+    # Regular detection
     initialization_pbar = progress(total=1, desc="Initializing model")
     print("Initializing model...")
     detection_model, model_type = initialize_model(
@@ -921,20 +922,29 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
     result = result.to_coco_predictions()
     print("Prediction is done!")
 
-    def create_points(result):
+    if Output_mode == "Points only":
         points = []
         for instance in result:
             bbox = instance["bbox"]
             Y, X = int(bbox[0] + (bbox[2] // 2)), int(bbox[1] + (bbox[3] // 2))
             points.append([X, Y])
         n_cells = len(points)
-        points = np.array(points)
-        viewer.add_points(
-            points, size=Points_size, name=f"{n_cells} points {name}"
-        )
-        return points, n_cells
-
-    def create_bbox(result):
+        if n_cells > 0:
+            viewer.add_points(
+                np.array(points),
+                size=Points_size,
+                name=f"{n_cells} points {name}",
+            )
+        else:
+            viewer.add_points(
+                np.empty((0, 3)),
+                size=Points_size,
+                name=f"0 points {name}",
+            )
+    elif (
+        Output_mode == "Bounding boxes"
+        or Output_mode == "Bounding boxes with confidence"
+    ):
         bboxes = []
         scores = []
         for instance in result:
@@ -950,7 +960,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             scores.append(score)
         n_cells = len(scores)
         properties = {"score": scores}
-        if Show_confidence:
+        if Output_mode == "Bounding boxes with confidence":
             text_parameters = {
                 "string": "{score:.2f}",
                 "size": Score_text_size,
@@ -976,20 +986,19 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
                 properties=properties,
                 name=f"{n_cells} bounding boxes {name}",
             )
-        return bboxes, scores, n_cells
+    else:
+        # fallback to points
+        points = []
+        for instance in result:
+            bbox = instance["bbox"]
+            Y, X = int(bbox[0] + (bbox[2] // 2)), int(bbox[1] + (bbox[3] // 2))
+            points.append([X, Y])
+        n_cells = len(points)
+        viewer.add_points(
+            np.array(points),
+            size=Points_size,
+            name=f"{n_cells} points {name}",
+        )
 
     viewer.window._status_bar._toggle_activity_dock(False)
-
-    if Generate_points:
-        print("Generating points...")
-        create_points(result)
-        print("Points are generated!")
-    if Generate_bbox:
-        print("Generating boxes...")
-        create_bbox(result)
-        print("Boxes are generated!")
-    if not Generate_points and not Generate_bbox:
-        print("None of the options are chosen, generating points as a default")
-        create_points(result)
-        print("Points are generated!")
     return None
