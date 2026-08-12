@@ -53,9 +53,9 @@ def calibrate_with_known_number(
     Select_model=first_model,
     Calibration_number=100,
     ADVANCED_SETTINGS="",
-    Postprocess="GREEDYNMM",
+    Postprocess="NMS",
     Match_metric="IOS",
-    Intersection_threshold=0.3,
+    Intersection_threshold=0.34,
     Sahi_size=640,
     Sahi_overlap: float = 0.2,
 ):
