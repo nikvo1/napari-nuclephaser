@@ -16,6 +16,11 @@ from napari.utils.notifications import show_error, show_info
 from sahi.predict import get_sliced_prediction
 from torch import cuda
 
+try:
+    from skimage.util import view_as_windows
+except ImportError:
+    from numpy.lib.stride_tricks import sliding_window_view as view_as_windows
+
 from napari_nuclephaser.utils import initialize_model
 
 warnings.filterwarnings(action="ignore", category=FutureWarning)
@@ -148,68 +153,6 @@ def extract_features_grayscale(region):
     }
 
 
-def extract_all_features(
-    expanded_region, rel_x1, rel_y1, rel_x2, rel_y2, eps=1.0
-):
-    lap_expanded = cv2.Laplacian(expanded_region, cv2.CV_64F, ksize=3)
-    flat_img = expanded_region.ravel()
-    flat_lap = lap_expanded.ravel()
-
-    ctx_mean = np.mean(flat_img)
-    ctx_std = np.std(flat_img)
-    ctx_median = np.median(flat_img)
-    ctx_p25 = np.percentile(flat_img, 25)
-    ctx_p75 = np.percentile(flat_img, 75)
-    ctx_rms = np.sqrt(np.mean((flat_img - ctx_mean) ** 2))
-    ctx_lap_var = np.var(flat_lap)
-    hist, _ = np.histogram(flat_img, bins=256, range=(0, 255))
-    hist = hist.astype(np.float64)
-    hist /= hist.sum() + 1e-12
-    ctx_entropy = -np.sum(hist * np.log2(hist + 1e-12))
-
-    var_I = np.var(flat_img)
-    var_L = np.var(flat_lap)
-    focus_score = var_L / (var_I + eps) if (var_I + eps) > 0 else 0.0
-
-    original_region = expanded_region[rel_y1:rel_y2, rel_x1:rel_x2]
-    obj_feats = extract_features_grayscale(original_region)
-
-    rel_mean = obj_feats["mean"] - ctx_median
-    rel_median = obj_feats["median"] - ctx_median
-    rel_std = obj_feats["std"] / (ctx_std + 1e-6)
-    rel_contrast = obj_feats["rms_contrast"] - ctx_rms
-
-    return {
-        "height/width": obj_feats["height/width"],
-        "mean": obj_feats["mean"],
-        "std": obj_feats["std"],
-        "median": obj_feats["median"],
-        "p25": obj_feats["p25"],
-        "p75": obj_feats["p75"],
-        "iqr": obj_feats["iqr"],
-        "min": obj_feats["min"],
-        "max": obj_feats["max"],
-        "range": obj_feats["range"],
-        "rms_contrast": obj_feats["rms_contrast"],
-        "lap_var": obj_feats["lap_var"],
-        "entropy": obj_feats["entropy"],
-        "energy": obj_feats["energy"],
-        "context_mean": ctx_mean,
-        "context_std": ctx_std,
-        "context_median": ctx_median,
-        "context_p25": ctx_p25,
-        "context_p75": ctx_p75,
-        "context_rms_contrast": ctx_rms,
-        "context_lap_var": ctx_lap_var,
-        "context_entropy": ctx_entropy,
-        "relative_mean": rel_mean,
-        "relative_median": rel_median,
-        "relative_std": rel_std,
-        "relative_contrast": rel_contrast,
-        "focus": focus_score,
-    }
-
-
 def _parse_metadata(metadata_path):
     with open(metadata_path, encoding="utf-8") as f:
         content = f.read()
@@ -248,37 +191,6 @@ def _parse_metadata(metadata_path):
     return best_augmentations, thresholds, model_name
 
 
-def compute_tile_features(tile_gray, detections, global_top10_area):
-    stats = extract_features_grayscale(tile_gray)
-    features = {
-        "height/width": stats["height/width"],
-        "mean": stats["mean"],
-        "std": stats["std"],
-        "median": stats["median"],
-        "p25": stats["p25"],
-        "p75": stats["p75"],
-        "iqr": stats["iqr"],
-        "min": stats["min"],
-        "max": stats["max"],
-        "range": stats["range"],
-        "rms_contrast": stats["rms_contrast"],
-        "lap_var": stats["lap_var"],
-        "entropy": stats["entropy"],
-        "energy": stats["energy"],
-    }
-
-    h, w = tile_gray.shape
-    area = h * w
-    thresholds = [0.01, 0.1, 0.2, 0.3]
-    confs = [d[4] for d in detections]
-    for thr in thresholds:
-        count = sum(1 for c in confs if c >= thr)
-        features[f"density_{thr:.2f}"] = count / area if area > 0 else 0.0
-
-    features["top10_area"] = global_top10_area
-    return features
-
-
 @magic_factory(
     Postprocess={
         "choices": ["GREEDYNMM", "NMS", "NMM"],
@@ -303,11 +215,11 @@ def compute_tile_features(tile_gray, detections, global_top10_area):
     },
     Output_mode={
         "choices": [
-            "Points only",
+            "Points",
             "Bounding boxes",
-            "Bounding boxes with confidence",
+            "Bounding boxes with confidence scores",
         ],
-        "value": "Points only",
+        "value": "Points",
         "tooltip": "Select the type of output layer to add to the viewer.",
     },
     ADVANCED_SETTINGS={},
@@ -354,7 +266,7 @@ def make_points(
     viewer: napari.Viewer,
     Select_model=first_model,
     Confidence_threshold: float = 0.2,
-    Output_mode: str = "Points only",
+    Output_mode: str = "Points",
     Mode="Regular detection",
     Mode_file=pathlib.Path(),
     Save_result=False,
@@ -521,7 +433,7 @@ def make_points(
 
                 n_cells = len(points_aug)
 
-                if Output_mode == "Points only":
+                if Output_mode == "Points":
                     viewer.add_points(
                         np.array(points_aug),
                         size=Points_size,
@@ -529,10 +441,10 @@ def make_points(
                     )
                 elif (
                     Output_mode == "Bounding boxes"
-                    or Output_mode == "Bounding boxes with confidence"
+                    or Output_mode == "Bounding boxes with confidence scores"
                 ):
                     properties = {"score": scores_aug}
-                    if Output_mode == "Bounding boxes with confidence":
+                    if Output_mode == "Bounding boxes with confidence scores":
                         text_parameters = {
                             "string": "{score:.2f}",
                             "size": Score_text_size,
@@ -698,40 +610,102 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         if y_starts[-1] + win_size < img_h:
             y_starts.append(img_h - win_size)
 
-        window_thresholds = []
+        windows = view_as_windows(gray, (win_size, win_size), step=stride)
+        n_y, n_x, win_h, win_w = windows.shape
 
-        with progress(
-            total=len(x_starts) * len(y_starts), desc="Building threshold map"
-        ) as pbar_win:
-            for y0 in y_starts:
-                for x0 in x_starts:
-                    tile_gray = gray[y0 : y0 + win_size, x0 : x0 + win_size]
-                    dets_in_window = []
-                    for x1, x2, y1, y2, conf in det_list:
-                        cx = (x1 + x2) / 2
-                        cy = (y1 + y2) / 2
-                        if (
-                            x0 <= cx < x0 + win_size
-                            and y0 <= cy < y0 + win_size
-                        ):
-                            dets_in_window.append((x1, x2, y1, y2, conf))
+        windows_flat = windows.reshape(-1, win_h, win_w).astype(np.float64)
 
-                    features = compute_tile_features(
-                        tile_gray, dets_in_window, global_top10_area
-                    )
-                    feat_vec = [features[k] for k in feature_names]
-                    X_win = np.array([feat_vec])
-                    X_win_scaled = scaler.transform(X_win)
-                    thr = regressor.predict(X_win_scaled)[0]
-                    win_cx = x0 + win_size / 2
-                    win_cy = y0 + win_size / 2
-                    window_thresholds.append((win_cx, win_cy, thr))
-                    pbar_win.update(1)
+        means = np.mean(windows_flat, axis=(1, 2))
+        stds = np.std(windows_flat, axis=(1, 2))
+        medians = np.median(windows_flat, axis=(1, 2))
+        p25s = np.percentile(windows_flat, 25, axis=(1, 2))
+        p75s = np.percentile(windows_flat, 75, axis=(1, 2))
+        iqrs = p75s - p25s
+        mins = np.min(windows_flat, axis=(1, 2))
+        maxs = np.max(windows_flat, axis=(1, 2))
+        ranges = maxs - mins
+        rms_contrasts = np.sqrt(
+            np.mean((windows_flat - means[:, None, None]) ** 2, axis=(1, 2))
+        )
 
-        if not window_thresholds:
-            show_error("No windows processed; cannot build threshold map.")
-            viewer.window._status_bar._toggle_activity_dock(False)
-            return None
+        lap_full = cv2.Laplacian(gray, cv2.CV_64F, ksize=3)
+        lap_windows = view_as_windows(
+            lap_full, (win_size, win_size), step=stride
+        )
+        lap_windows_flat = lap_windows.reshape(-1, win_size, win_size)
+        lap_vars = np.var(lap_windows_flat, axis=(1, 2))
+
+        entropies = np.zeros(windows_flat.shape[0])
+        for idx, win in enumerate(windows_flat):
+            hist, _ = np.histogram(win, bins=256, range=(0, 255))
+            hist = hist.astype(np.float64)
+            hist /= hist.sum() + 1e-12
+            entropies[idx] = -np.sum(hist * np.log2(hist + 1e-12))
+
+        energies = np.sum(windows_flat**2, axis=(1, 2))
+        height_width_ratio = win_size / win_size
+
+        feature_arrays = {
+            "height/width": np.full(n_y * n_x, height_width_ratio),
+            "mean": means,
+            "std": stds,
+            "median": medians,
+            "p25": p25s,
+            "p75": p75s,
+            "iqr": iqrs,
+            "min": mins,
+            "max": maxs,
+            "range": ranges,
+            "rms_contrast": rms_contrasts,
+            "lap_var": lap_vars,
+            "entropy": entropies,
+            "energy": energies,
+        }
+
+        centers = np.array(
+            [
+                ((x1 + x2) / 2, (y1 + y2) / 2)
+                for (x1, x2, y1, y2, _) in det_list
+            ]
+        )
+        confs = np.array([conf for (_, _, _, _, conf) in det_list])
+
+        x_indices = np.searchsorted(x_starts, centers[:, 0], side="right") - 1
+        y_indices = np.searchsorted(y_starts, centers[:, 1], side="right") - 1
+        x_indices = np.clip(x_indices, 0, n_x - 1)
+        y_indices = np.clip(y_indices, 0, n_y - 1)
+
+        thresholds = [0.01, 0.1, 0.2, 0.3]
+        density_grids = {}
+        for thr in thresholds:
+            mask = confs >= thr
+            counts = np.zeros((n_y, n_x), dtype=np.float64)
+            if np.any(mask):
+                np.add.at(counts, (y_indices[mask], x_indices[mask]), 1)
+            density_grids[f"density_{thr:.2f}"] = counts / (
+                win_size * win_size
+            )
+
+        for thr in thresholds:
+            key = f"density_{thr:.2f}"
+            feature_arrays[key] = density_grids[key].ravel()
+
+        feature_arrays["top10_area"] = np.full(n_y * n_x, global_top10_area)
+
+        X_win = np.column_stack(
+            [feature_arrays[name] for name in feature_names]
+        )
+        X_win_scaled = scaler.transform(X_win)
+        thresholds_pred = regressor.predict(X_win_scaled)
+        threshold_grid = thresholds_pred.reshape(n_y, n_x)
+
+        window_centers = []
+        for yi, y0 in enumerate(y_starts):
+            for xi, x0 in enumerate(x_starts):
+                win_cx = x0 + win_size / 2
+                win_cy = y0 + win_size / 2
+                thr = threshold_grid[yi, xi]
+                window_centers.append((win_cx, win_cy, thr))
 
         sigma = win_size / 4.0
 
@@ -748,7 +722,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
 
                 total_weight = 0.0
                 weighted_thr = 0.0
-                for cx, cy, thr in window_thresholds:
+                for cx, cy, thr in window_centers:
                     half = win_size / 2
                     if (cx - half) <= px <= (cx + half) and (
                         cy - half
@@ -763,7 +737,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
                 else:
                     min_dist = float("inf")
                     final_thr = 0.5
-                    for cx, cy, thr in window_thresholds:
+                    for cx, cy, thr in window_centers:
                         dist = (px - cx) ** 2 + (py - cy) ** 2
                         if dist < min_dist:
                             min_dist = dist
@@ -781,7 +755,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
 
         n_filtered = len(filtered_points)
 
-        if Output_mode == "Points only":
+        if Output_mode == "Points":
             viewer.add_points(
                 np.array(filtered_points),
                 size=Points_size,
@@ -789,10 +763,10 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             )
         elif (
             Output_mode == "Bounding boxes"
-            or Output_mode == "Bounding boxes with confidence"
+            or Output_mode == "Bounding boxes with confidence scores"
         ):
             properties = {"score": filtered_scores}
-            if Output_mode == "Bounding boxes with confidence":
+            if Output_mode == "Bounding boxes with confidence scores":
                 text_parameters = {
                     "string": "{score:.2f}",
                     "size": Score_text_size,
@@ -878,7 +852,6 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         viewer.window._status_bar._toggle_activity_dock(False)
         return None
 
-    # Regular detection
     initialization_pbar = progress(total=1, desc="Initializing model")
     print("Initializing model...")
     detection_model, model_type = initialize_model(
@@ -922,7 +895,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
     result = result.to_coco_predictions()
     print("Prediction is done!")
 
-    if Output_mode == "Points only":
+    if Output_mode == "Points":
         points = []
         for instance in result:
             bbox = instance["bbox"]
@@ -943,7 +916,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             )
     elif (
         Output_mode == "Bounding boxes"
-        or Output_mode == "Bounding boxes with confidence"
+        or Output_mode == "Bounding boxes with confidence scores"
     ):
         bboxes = []
         scores = []
@@ -960,7 +933,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             scores.append(score)
         n_cells = len(scores)
         properties = {"score": scores}
-        if Output_mode == "Bounding boxes with confidence":
+        if Output_mode == "Bounding boxes with confidence scores":
             text_parameters = {
                 "string": "{score:.2f}",
                 "size": Score_text_size,
@@ -987,7 +960,6 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
                 name=f"{n_cells} bounding boxes {name}",
             )
     else:
-        # fallback to points
         points = []
         for instance in result:
             bbox = instance["bbox"]
