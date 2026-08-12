@@ -502,7 +502,7 @@ def calibrate_with_dynamic_threshold(
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-    regressor = KNeighborsRegressor(n_neighbors=1)
+    regressor = KNeighborsRegressor(n_neighbors=2)
     regressor.fit(X_scaled, y)
 
     feature_names = sorted(
@@ -592,7 +592,7 @@ def calibrate_with_dynamic_threshold(
     os.makedirs(dynamic_folder, exist_ok=True)
 
     # Save regressor and scaler
-    model_path = os.path.join(dynamic_folder, "knn_threshold_regressor.pkl")
+    model_path = os.path.join(dynamic_folder, "dynamic_threshold.pkl")
     with open(model_path, "wb") as f:
         pickle.dump(
             {
