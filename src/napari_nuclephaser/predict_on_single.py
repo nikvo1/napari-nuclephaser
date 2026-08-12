@@ -27,7 +27,6 @@ models_folder = pathlib.Path(pathlib.Path(__file__).parent / "models")
 first_model = next((x for x in models_folder.iterdir() if x.is_file()), None)
 
 
-# ---------- Augmentation functions (unchanged) ----------
 def _native(img):
     return img
 
@@ -90,7 +89,6 @@ AUGMENTATION_MAP = {
 }
 
 
-# ---------- Feature extraction helpers (copied from calibrate_with_dynamic_threshold) ----------
 def expand_bbox(bbox, image_shape, scale=2.5):
     x1, x2, y1, y2 = bbox
     width = x2 - x1
@@ -212,7 +210,6 @@ def extract_all_features(
     }
 
 
-# ---------- Metadata parsing (unchanged) ----------
 def _parse_metadata(metadata_path):
     with open(metadata_path, encoding="utf-8") as f:
         content = f.read()
@@ -249,6 +246,37 @@ def _parse_metadata(metadata_path):
             "Could not find per‑augmentation thresholds in metadata file."
         )
     return best_augmentations, thresholds, model_name
+
+
+def compute_tile_features(tile_gray, detections, global_top10_area):
+    stats = extract_features_grayscale(tile_gray)
+    features = {
+        "height/width": stats["height/width"],
+        "mean": stats["mean"],
+        "std": stats["std"],
+        "median": stats["median"],
+        "p25": stats["p25"],
+        "p75": stats["p75"],
+        "iqr": stats["iqr"],
+        "min": stats["min"],
+        "max": stats["max"],
+        "range": stats["range"],
+        "rms_contrast": stats["rms_contrast"],
+        "lap_var": stats["lap_var"],
+        "entropy": stats["entropy"],
+        "energy": stats["energy"],
+    }
+
+    h, w = tile_gray.shape
+    area = h * w
+    thresholds = [0.01, 0.1, 0.2, 0.3]
+    confs = [d[4] for d in detections]
+    for thr in thresholds:
+        count = sum(1 for c in confs if c >= thr)
+        features[f"density_{thr:.2f}"] = count / area if area > 0 else 0.0
+
+    features["top10_area"] = global_top10_area
+    return features
 
 
 @magic_factory(
@@ -345,12 +373,9 @@ def make_points(
     Bbox_thickness=5,
     Score_text_size=3,
 ) -> napari.types.LayerDataTuple:
-    """Takes a single-frame image, YOLO model, and optional TTA or dynamic threshold -> adds point/bbox layers and saves averaged/filtered counts."""
-    # ---------- Mode handling ----------
     use_tta = Mode == "Detection with TTA"
     use_dynamic = Mode == "Detection with Dynamic threshold"
 
-    # If mode is not "None", the file must be provided and exist.
     if Mode != "None":
         if not Mode_file or not Mode_file.exists():
             show_error(
@@ -358,7 +383,6 @@ def make_points(
             )
             return None
 
-        # Check file extension vs mode
         if use_tta and Mode_file.suffix.lower() != ".txt":
             show_error("TTA mode requires a .txt metadata file.")
             return None
@@ -366,7 +390,6 @@ def make_points(
             show_error("Dynamic threshold mode requires a .pkl file.")
             return None
 
-    # ---------- Input validation and preprocessing ----------
     pic = Select_image.data
     if len(pic.shape) == 2:
         pic = cv2.cvtColor(pic, cv2.COLOR_GRAY2RGB)
@@ -384,7 +407,6 @@ def make_points(
 
     viewer.window._status_bar._toggle_activity_dock(True)
 
-    # ---------- TTA mode ----------
     if use_tta:
         if not Mode_file or not Mode_file.exists():
             show_error("TTA metadata file not found or not provided.")
@@ -552,7 +574,6 @@ def make_points(
             result_table = {"Frame": [name], "Count": [avg_count]}
             df = pd.DataFrame.from_dict(result_table)
 
-            # Save according to the selected format
             if Save_format in ("CSV", "Both"):
                 df.to_csv(
                     os.path.join(subfolder, f"{name}_TTA_averaged_counts.csv"),
@@ -588,7 +609,6 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         viewer.window._status_bar._toggle_activity_dock(False)
         return None
 
-    # ---------- Dynamic threshold mode (using Random Forest) ----------
     if use_dynamic:
         if not Mode_file or not Mode_file.exists():
             show_error(
@@ -597,47 +617,14 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             viewer.window._status_bar._toggle_activity_dock(False)
             return None
 
-        # Load the Random Forest classifier (saved from calibrate_with_dynamic_threshold)
         with open(Mode_file, "rb") as f:
-            rf_model = pickle.load(f)
+            model_data = pickle.load(f)
+        regressor = model_data["regressor"]
+        scaler = model_data["scaler"]
+        feature_names = model_data["feature_names"]
 
-        # Feature columns used during training (must match exactly)
-        feature_cols = [
-            "confidence",
-            "size",
-            "height/width",
-            "mean",
-            "std",
-            "median",
-            "p25",
-            "p75",
-            "iqr",
-            "min",
-            "max",
-            "range",
-            "rms_contrast",
-            "lap_var",
-            "entropy",
-            "energy",
-            "context_mean",
-            "context_std",
-            "context_median",
-            "context_p25",
-            "context_p75",
-            "context_rms_contrast",
-            "context_lap_var",
-            "context_entropy",
-            "relative_mean",
-            "relative_median",
-            "relative_std",
-            "relative_contrast",
-            "focus",
-        ]
-
-        # Run inference with confidence = 0.01 (ignoring user's threshold)
         model, _ = initialize_model(str(Select_model), 0.01, cuda_available)
 
-        # Sliced prediction progress
         pbar_slices = None
         post_pbar_dyn = None
 
@@ -675,83 +662,127 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             viewer.window._status_bar._toggle_activity_dock(False)
             return None
 
-        # Extract features for each detection
-        print("Extracting features for dynamic threshold (Random Forest)...")
-        rows = []
-        # Convert the image to grayscale once (for feature extraction)
+        det_list = []
+        for det in detections:
+            x1, x2, y1, y2 = (
+                int(det.bbox.minx),
+                int(det.bbox.maxx),
+                int(det.bbox.miny),
+                int(det.bbox.maxy),
+            )
+            conf = det.score.value
+            det_list.append((x1, x2, y1, y2, conf))
+
+        sorted_dets = sorted(det_list, key=lambda d: d[4], reverse=True)
+        n_top = max(1, int(0.1 * len(sorted_dets)))
+        top_dets = sorted_dets[:n_top]
+        areas = [(x2 - x1) * (y2 - y1) for (x1, x2, y1, y2, _) in top_dets]
+        global_top10_area = np.mean(areas) if areas else 0.0
+
         if len(pic.shape) == 3:
             gray = cv2.cvtColor(pic, cv2.COLOR_RGB2GRAY)
         else:
             gray = pic
 
-        with progress(
-            total=len(detections), desc="Feature extraction"
-        ) as pbar_feat:
-            for det in detections:
-                x1, x2, y1, y2 = (
-                    int(det.bbox.minx),
-                    int(det.bbox.maxx),
-                    int(det.bbox.miny),
-                    int(det.bbox.maxy),
-                )
-                bbox = (x1, x2, y1, y2)
-                # Expand bbox
-                exp_x1, exp_x2, exp_y1, exp_y2 = expand_bbox(
-                    bbox, gray.shape, scale=2.5
-                )
-                expanded = gray[exp_y1:exp_y2, exp_x1:exp_x2]
-                rel_x1 = x1 - exp_x1
-                rel_y1 = y1 - exp_y1
-                rel_x2 = x2 - exp_x1
-                rel_y2 = y2 - exp_y1
-                feats = extract_all_features(
-                    expanded, rel_x1, rel_y1, rel_x2, rel_y2
-                )
-                row = {
-                    "confidence": det.score.value,
-                    "size": (x2 - x1) * (y2 - y1),
-                    **feats,
-                }
-                rows.append(row)
-                pbar_feat.update(1)
+        img_h, img_w = gray.shape
 
-        if not rows:
-            show_info(
-                "No features extracted (possible issue with detection format)."
-            )
+        win_size = Sahi_size // 2
+        stride = win_size // 2
+
+        if win_size > img_h or win_size > img_w:
+            win_size = max(img_h, img_w)
+            stride = win_size
+
+        x_starts = list(range(0, img_w - win_size + 1, stride))
+        y_starts = list(range(0, img_h - win_size + 1, stride))
+        if x_starts[-1] + win_size < img_w:
+            x_starts.append(img_w - win_size)
+        if y_starts[-1] + win_size < img_h:
+            y_starts.append(img_h - win_size)
+
+        window_thresholds = []
+
+        with progress(
+            total=len(x_starts) * len(y_starts), desc="Building threshold map"
+        ) as pbar_win:
+            for y0 in y_starts:
+                for x0 in x_starts:
+                    tile_gray = gray[y0 : y0 + win_size, x0 : x0 + win_size]
+                    dets_in_window = []
+                    for x1, x2, y1, y2, conf in det_list:
+                        cx = (x1 + x2) / 2
+                        cy = (y1 + y2) / 2
+                        if (
+                            x0 <= cx < x0 + win_size
+                            and y0 <= cy < y0 + win_size
+                        ):
+                            dets_in_window.append((x1, x2, y1, y2, conf))
+
+                    features = compute_tile_features(
+                        tile_gray, dets_in_window, global_top10_area
+                    )
+                    feat_vec = [features[k] for k in feature_names]
+                    X_win = np.array([feat_vec])
+                    X_win_scaled = scaler.transform(X_win)
+                    thr = regressor.predict(X_win_scaled)[0]
+                    win_cx = x0 + win_size / 2
+                    win_cy = y0 + win_size / 2
+                    window_thresholds.append((win_cx, win_cy, thr))
+                    pbar_win.update(1)
+
+        if not window_thresholds:
+            show_error("No windows processed; cannot build threshold map.")
             viewer.window._status_bar._toggle_activity_dock(False)
             return None
 
-        df = pd.DataFrame(rows)
-        # Predict labels using the Random Forest
-        X = df[feature_cols]
-        y_pred = rf_model.predict(X)
-        # Keep only detections with label 1
-        keep = y_pred == 1
+        sigma = win_size / 4.0
 
-        # Filter detections
         filtered_boxes = []
         filtered_scores = []
         filtered_points = []
-        for idx, det in enumerate(detections):
-            if keep[idx]:
-                x1, x2, y1, y2 = (
-                    int(det.bbox.minx),
-                    int(det.bbox.maxx),
-                    int(det.bbox.miny),
-                    int(det.bbox.maxy),
-                )
-                center_x = int((x1 + x2) / 2)
-                center_y = int((y1 + y2) / 2)
-                filtered_points.append([center_y, center_x])
-                filtered_boxes.append(
-                    np.array([[y1, x1], [y1, x2], [y2, x2], [y2, x1]])
-                )
-                filtered_scores.append(det.score.value)
+
+        with progress(
+            total=len(det_list), desc="Filtering detections"
+        ) as pbar_det:
+            for x1, x2, y1, y2, conf in det_list:
+                px = (x1 + x2) / 2
+                py = (y1 + y2) / 2
+
+                total_weight = 0.0
+                weighted_thr = 0.0
+                for cx, cy, thr in window_thresholds:
+                    half = win_size / 2
+                    if (cx - half) <= px <= (cx + half) and (
+                        cy - half
+                    ) <= py <= (cy + half):
+                        dist2 = (px - cx) ** 2 + (py - cy) ** 2
+                        weight = np.exp(-dist2 / (2 * sigma**2))
+                        weighted_thr += weight * thr
+                        total_weight += weight
+
+                if total_weight > 0:
+                    final_thr = weighted_thr / total_weight
+                else:
+                    min_dist = float("inf")
+                    final_thr = 0.5
+                    for cx, cy, thr in window_thresholds:
+                        dist = (px - cx) ** 2 + (py - cy) ** 2
+                        if dist < min_dist:
+                            min_dist = dist
+                            final_thr = thr
+
+                if conf >= final_thr:
+                    filtered_boxes.append(
+                        np.array([[y1, x1], [y1, x2], [y2, x2], [y2, x1]])
+                    )
+                    filtered_scores.append(conf)
+                    filtered_points.append(
+                        [int((y1 + y2) / 2), int((x1 + x2) / 2)]
+                    )
+                pbar_det.update(1)
 
         n_filtered = len(filtered_points)
 
-        # Add layers
         if Generate_points or (not Generate_points and not Generate_bbox):
             viewer.add_points(
                 np.array(filtered_points),
@@ -788,7 +819,6 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
                     name=f"{n_filtered} bounding boxes (dynamic) {name}",
                 )
 
-        # Save results if requested
         if Save_result:
             from napari_nuclephaser.utils import create_unique_subfolder
 
@@ -800,7 +830,6 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             )
             os.makedirs(dynamic_folder, exist_ok=True)
 
-            # Save count
             result_table = {"Frame": [name], "Filtered_count": [n_filtered]}
             df_res = pd.DataFrame.from_dict(result_table)
 
@@ -817,7 +846,6 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
                     index=False,
                 )
 
-            # Save the Random Forest model used (copy)
             import shutil
 
             shutil.copy2(
@@ -825,15 +853,15 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
                 os.path.join(dynamic_folder, "dynamic_threshold_used.pkl"),
             )
 
-            # Metadata
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
             metadata = f"""Experiment time: {current_date}
-Dynamic threshold prediction (Random Forest) on single image
+Dynamic threshold prediction (k‑NN threshold map) on single image
 Image napari name: {name}
 Detection model: {Select_model}
-Random Forest .pkl file: {Mode_file.name}
-Number of detections before filtering: {len(detections)}
+k‑NN .pkl file: {Mode_file.name}
+Number of detections before filtering: {len(det_list)}
 Number of detections after filtering: {n_filtered}
+Window size (threshold map): {win_size} px (half of SAHI size)
 SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Postprocess}, match_metric={Match_metric}, iou_thr={Intersection_threshold}
 """
             metadata_path = os.path.join(
@@ -850,7 +878,6 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         viewer.window._status_bar._toggle_activity_dock(False)
         return None
 
-    # ---------- Original (non‑TTA, non‑dynamic) mode ----------
     initialization_pbar = progress(total=1, desc="Initializing model")
     print("Initializing model...")
     detection_model, model_type = initialize_model(
