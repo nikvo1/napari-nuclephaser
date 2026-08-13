@@ -209,7 +209,7 @@ def _parse_metadata(metadata_path):
         "tooltip": "Select the prediction Detection_mode: standard (None), Test-Time Augmentation (TTA), or dynamic threshold filtering.",
     },
     Mode_file={
-        "Detection_mode": "r",
+        "mode": "r",
         "filter": "*.txt;*.pkl",
         "tooltip": "Select the TTA metadata file (.txt) or the dynamic threshold .pkl file, depending on the chosen Detection_mode.",
     },
