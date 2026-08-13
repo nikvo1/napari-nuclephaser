@@ -319,7 +319,7 @@ def calibrate_with_dynamic_threshold(
 
     viewer.window._status_bar._toggle_activity_dock(True)
 
-    initialization_pbar = progress(total=1, desc="Initializing model")
+    initialization_pbar = progress(total=0, desc="Initializing model")
     phase_model_low, model_type = initialize_model(
         str(Phase_model), 0.01, cuda_available
     )

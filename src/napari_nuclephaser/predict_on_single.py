@@ -525,7 +525,11 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         scaler = model_data["scaler"]
         feature_names = model_data["feature_names"]
 
+        viewer.window._status_bar._toggle_activity_dock(True)
+
+        initialization_pbar = progress(total=0, desc="Initializing model")
         model, _ = initialize_model(str(Select_model), 0.01, cuda_available)
+        initialization_pbar.close()
 
         pbar_slices = None
         post_pbar_dyn = None
@@ -565,7 +569,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             return None
 
         dynamic_threshold_pbar = progress(
-            total=1, desc="Applying dynamic threshold"
+            total=0, desc="Applying dynamic threshold"
         )
 
         det_list = []
@@ -849,7 +853,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         viewer.window._status_bar._toggle_activity_dock(False)
         return None
 
-    initialization_pbar = progress(total=1, desc="Initializing model")
+    initialization_pbar = progress(total=0, desc="Initializing model")
     detection_model, model_type = initialize_model(
         rf"{Select_model}", Confidence_threshold, cuda_available
     )
