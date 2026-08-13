@@ -200,20 +200,20 @@ def _parse_metadata(metadata_path):
         "choices": ["IOS", "IOU"],
         "tooltip": "A metric to determine when two detections are two different detections overlapping or is it a one detection. Sett obss/sahi library docs for more details",
     },
-    Mode={
+    Detection_mode={
         "choices": [
             "Regular detection",
             "Detection with TTA",
             "Detection with Dynamic threshold",
         ],
-        "tooltip": "Select the prediction mode: standard (None), Test-Time Augmentation (TTA), or dynamic threshold filtering.",
+        "tooltip": "Select the prediction Detection_mode: standard (None), Test-Time Augmentation (TTA), or dynamic threshold filtering.",
     },
     Mode_file={
-        "mode": "r",
+        "Detection_mode": "r",
         "filter": "*.txt;*.pkl",
-        "tooltip": "Select the TTA metadata file (.txt) or the dynamic threshold .pkl file, depending on the chosen mode.",
+        "tooltip": "Select the TTA metadata file (.txt) or the dynamic threshold .pkl file, depending on the chosen Detection_mode.",
     },
-    Output_mode={
+    Output_format={
         "choices": [
             "Points",
             "Bounding boxes",
@@ -254,9 +254,9 @@ def _parse_metadata(metadata_path):
         "tooltip": "Select the output format for saving results (when Save_result is enabled).",
     },
     Experiment_name={
-        "tooltip": "Name of the subfolder that will be created for the results (TTA mode only)."
+        "tooltip": "Name of the subfolder that will be created for the results (TTA Detection_mode only)."
     },
-    Save_folder={"mode": "d"},
+    Save_folder={"Detection_mode": "d"},
     call_button="Predict",
     auto_call=False,
     result_widget=False,
@@ -266,8 +266,8 @@ def make_points(
     viewer: napari.Viewer,
     Select_model=first_model,
     Confidence_threshold: float = 0.2,
-    Output_mode: str = "Points",
-    Mode="Regular detection",
+    Output_format: str = "Points",
+    Detection_mode="Regular detection",
     Mode_file=pathlib.Path(),
     Save_result=False,
     Save_folder=pathlib.Path(),
@@ -283,21 +283,25 @@ def make_points(
     Bbox_thickness=5,
     Score_text_size=3,
 ) -> napari.types.LayerDataTuple:
-    use_tta = Mode == "Detection with TTA"
-    use_dynamic = Mode == "Detection with Dynamic threshold"
+    use_tta = Detection_mode == "Detection with TTA"
+    use_dynamic = Detection_mode == "Detection with Dynamic threshold"
 
-    if Mode != "None":
+    if Detection_mode != "Regular detection":
         if not Mode_file or not Mode_file.exists():
             show_error(
-                f"Mode '{Mode}' requires a valid file. Please select the appropriate file."
+                f"Detection mode '{Detection_mode}' requires a valid mode file. See docs for more details."
             )
             return None
 
         if use_tta and Mode_file.suffix.lower() != ".txt":
-            show_error("TTA mode requires a .txt metadata file.")
+            show_error(
+                "TTA detection mode requires a .txt metadata file. See docs for more details."
+            )
             return None
         if use_dynamic and Mode_file.suffix.lower() != ".pkl":
-            show_error("Dynamic threshold mode requires a .pkl file.")
+            show_error(
+                "Dynamic threshold detection mode requires a .pkl file. See docs for more details."
+            )
             return None
 
     pic = Select_image.data
@@ -307,7 +311,7 @@ def make_points(
         len(pic.shape) == 3 and pic.shape[-1] not in (1, 3, 4)
     ):
         show_error(
-            "Image is not a single frame! Choose different widget for processing stacks of images"
+            "Image is not a single frame! Use different widget for processing stacks of images"
         )
         return None
     name = Select_image.name
@@ -318,15 +322,6 @@ def make_points(
     viewer.window._status_bar._toggle_activity_dock(True)
 
     if use_tta:
-        if not Mode_file or not Mode_file.exists():
-            show_error("TTA metadata file not found or not provided.")
-            viewer.window._status_bar._toggle_activity_dock(False)
-            return None
-        if Mode_file.suffix.lower() != ".txt":
-            show_error("Selected file is not a .txt file.")
-            viewer.window._status_bar._toggle_activity_dock(False)
-            return None
-
         try:
             best_augs, aug_thresholds, model_name_meta = _parse_metadata(
                 str(Mode_file)
@@ -344,7 +339,7 @@ def make_points(
 
         all_counts = []
         with progress(
-            total=len(best_augs), desc="TTA augmentations"
+            total=len(best_augs), desc="Detection with augmentations"
         ) as pbar_augs:
             for aug_name in best_augs:
                 if aug_name not in AUGMENTATION_MAP:
@@ -367,14 +362,15 @@ def make_points(
                     nonlocal pbar_inner, post_pbar_inner
                     if pbar_inner is None:
                         pbar_inner = progress(
-                            total=total, desc=f"Sliced prediction ({aug_name})"
+                            total=total,
+                            desc=f"Sliced prediction with ({aug_name})",
                         )
                     pbar_inner.update(1)
                     if current == total:
                         pbar_inner.close()
                         post_pbar_inner = progress(
                             total=0,
-                            desc=f"Running postprocessing ({aug_name})",
+                            desc=f"Running postprocessing with ({aug_name})",
                         )
 
                 result = get_sliced_prediction(
@@ -433,18 +429,21 @@ def make_points(
 
                 n_cells = len(points_aug)
 
-                if Output_mode == "Points":
+                if Output_format == "Points":
                     viewer.add_points(
                         np.array(points_aug),
                         size=Points_size,
                         name=f"{n_cells} points ({aug_name}) {name}",
                     )
                 elif (
-                    Output_mode == "Bounding boxes"
-                    or Output_mode == "Bounding boxes with confidence scores"
+                    Output_format == "Bounding boxes"
+                    or Output_format == "Bounding boxes with confidence scores"
                 ):
                     properties = {"score": scores_aug}
-                    if Output_mode == "Bounding boxes with confidence scores":
+                    if (
+                        Output_format
+                        == "Bounding boxes with confidence scores"
+                    ):
                         text_parameters = {
                             "string": "{score:.2f}",
                             "size": Score_text_size,
@@ -500,7 +499,7 @@ def make_points(
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
             metadata = f"""Experiment time: {current_date}
 TTA prediction on single image
-Image napari name: {name}
+Image name: {name}
 Detection model: {Select_model}
 Augmentations used: {' + '.join(best_augs)}
 Per‑augmentation thresholds: {aug_thresholds}
@@ -520,13 +519,6 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         return None
 
     if use_dynamic:
-        if not Mode_file or not Mode_file.exists():
-            show_error(
-                "Dynamic threshold .pkl file not found or not provided."
-            )
-            viewer.window._status_bar._toggle_activity_dock(False)
-            return None
-
         with open(Mode_file, "rb") as f:
             model_data = pickle.load(f)
         regressor = model_data["regressor"]
@@ -571,6 +563,10 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             show_info("No detections found by the model.")
             viewer.window._status_bar._toggle_activity_dock(False)
             return None
+
+        dynamic_threshold_pbar = progress(
+            total=1, desc="Applying dynamic threshold"
+        )
 
         det_list = []
         for det in detections:
@@ -713,6 +709,8 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         filtered_scores = []
         filtered_points = []
 
+        dynamic_threshold_pbar.close()
+
         with progress(
             total=len(det_list), desc="Filtering detections"
         ) as pbar_det:
@@ -755,18 +753,18 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
 
         n_filtered = len(filtered_points)
 
-        if Output_mode == "Points":
+        if Output_format == "Points":
             viewer.add_points(
                 np.array(filtered_points),
                 size=Points_size,
                 name=f"{n_filtered} points (dynamic) {name}",
             )
         elif (
-            Output_mode == "Bounding boxes"
-            or Output_mode == "Bounding boxes with confidence scores"
+            Output_format == "Bounding boxes"
+            or Output_format == "Bounding boxes with confidence scores"
         ):
             properties = {"score": filtered_scores}
-            if Output_mode == "Bounding boxes with confidence scores":
+            if Output_format == "Bounding boxes with confidence scores":
                 text_parameters = {
                     "string": "{score:.2f}",
                     "size": Score_text_size,
@@ -829,13 +827,12 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
 
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
             metadata = f"""Experiment time: {current_date}
-Dynamic threshold prediction (k‑NN threshold map) on single image
+Dynamic threshold prediction on single image
 Image napari name: {name}
 Detection model: {Select_model}
-k‑NN .pkl file: {Mode_file.name}
+Dynamic threshold .pkl file: {Mode_file.name}
 Number of detections before filtering: {len(det_list)}
 Number of detections after filtering: {n_filtered}
-Window size (threshold map): {win_size} px (half of SAHI size)
 SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Postprocess}, match_metric={Match_metric}, iou_thr={Intersection_threshold}
 """
             metadata_path = os.path.join(
@@ -853,15 +850,10 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         return None
 
     initialization_pbar = progress(total=1, desc="Initializing model")
-    print("Initializing model...")
     detection_model, model_type = initialize_model(
         rf"{Select_model}", Confidence_threshold, cuda_available
     )
-    print(
-        f"Model is initialized! Model type is {model_type}. Running on {cuda_available}"
-    )
     initialization_pbar.close()
-    print("Performing sliced prediction...")
 
     pbar = None
     post_pbar = None
@@ -869,7 +861,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
     def progress_callback(current: int, total: int):
         nonlocal pbar, post_pbar
         if pbar is None:
-            pbar = progress(total=total, desc="Processing slices")
+            pbar = progress(total=total, desc="Sliced prediction")
         pbar.update(1)
         if current == total:
             pbar.close()
@@ -893,9 +885,8 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         post_pbar.close()
 
     result = result.to_coco_predictions()
-    print("Prediction is done!")
 
-    if Output_mode == "Points":
+    if Output_format == "Points":
         points = []
         for instance in result:
             bbox = instance["bbox"]
@@ -915,8 +906,8 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
                 name=f"0 points {name}",
             )
     elif (
-        Output_mode == "Bounding boxes"
-        or Output_mode == "Bounding boxes with confidence scores"
+        Output_format == "Bounding boxes"
+        or Output_format == "Bounding boxes with confidence scores"
     ):
         bboxes = []
         scores = []
@@ -933,7 +924,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             scores.append(score)
         n_cells = len(scores)
         properties = {"score": scores}
-        if Output_mode == "Bounding boxes with confidence scores":
+        if Output_format == "Bounding boxes with confidence scores":
             text_parameters = {
                 "string": "{score:.2f}",
                 "size": Score_text_size,

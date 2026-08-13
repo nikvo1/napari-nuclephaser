@@ -285,7 +285,7 @@ def calibrate_with_dynamic_threshold(
         if points_data.shape[1] == 2:
             if n_frames != 1:
                 show_error(
-                    "Points have 2 columns but multiple frames. Use (frame, y, x)."
+                    "Points have 2 columns but multiple frames. Select the valid points layer."
                 )
                 return None
             points_per_frame = {0: [(y, x) for y, x in points_data]}
@@ -317,15 +317,16 @@ def calibrate_with_dynamic_threshold(
         show_error("Max_blur_strength must be >= 0.")
         return None
 
-    print("Initialising model with confidence=0.01 ...")
+    viewer.window._status_bar._toggle_activity_dock(True)
+
+    initialization_pbar = progress(total=1, desc="Initializing model")
     phase_model_low, model_type = initialize_model(
         str(Phase_model), 0.01, cuda_available
     )
-    print(f"Model ready: {model_type}, device: {cuda_available}")
+    initialization_pbar.close()
 
     calib_data = []
     test_data = []
-    viewer.window._status_bar._toggle_activity_dock(True)
 
     with progress(
         total=len(frames_with_images), desc="Splitting frames"
@@ -415,18 +416,14 @@ def calibrate_with_dynamic_threshold(
         show_error("No calibration tiles found (no points in any tile).")
         return None
 
-    # --- Calibration: collect training samples AND sigma=0 data for static threshold ---
-    print("Collecting training samples from calibration tiles...")
     samples_X = []
     samples_y = []
-    # For static threshold: store confidences and gt counts from sigma=0 calibration tiles
-    static_calib_confs = []  # list of lists of confidences (one per tile)
-    static_calib_gts = []  # list of gt counts
+
+    static_calib_confs = []
+    static_calib_gts = []
 
     total_steps = len(calib_data) * len(sigmas)
-    with progress(
-        total=total_steps, desc="Calibration feature extraction"
-    ) as pbar:
+    with progress(total=total_steps, desc="Running calibration") as pbar:
         for entry in calib_data:
             tile_gray = entry["tile_gray"]
             gt_count = entry["gt_count"]
@@ -467,7 +464,6 @@ def calibrate_with_dynamic_threshold(
                     conf = det.score.value
                     detections.append((x1, x2, y1, y2, conf))
 
-                # If sigma == 0, store confidences for static threshold
                 if sigma == 0:
                     confs = [d[4] for d in detections]
                     static_calib_confs.append(confs)
@@ -487,41 +483,32 @@ def calibrate_with_dynamic_threshold(
 
     if not samples_X:
         show_error(
-            "No training samples collected (no detections or all gt=0)."
+            "No training samples collected (no detections or no reference points)."
         )
         return None
 
     X = np.array(samples_X)
     y = np.array(samples_y)
 
-    print(f"Collected {len(X)} training samples.")
-
-    # --- Compute static threshold from sigma=0 calibration data ---
     static_threshold, _ = find_static_threshold(
         static_calib_confs, static_calib_gts
-    )
-    print(
-        f"Static threshold (from sigma=0 calibration): {static_threshold:.2f}"
     )
 
     # --- Train kNN regressor ---
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-    regressor = KNeighborsRegressor(n_neighbors=2)
+    regressor = KNeighborsRegressor(n_neighbors=1)
     regressor.fit(X_scaled, y)
 
     feature_names = sorted(
         compute_tile_features(np.zeros((10, 10), dtype=np.uint8), []).keys()
     )
 
-    # --- Testing phase ---
-    print("Testing on test tiles (dynamic threshold)...")
     results_dynamic = []
-    # We'll also store test data for static evaluation
     test_data_by_sigma = defaultdict(list)
 
     with progress(
-        total=len(test_data) * len(sigmas), desc="Testing dynamic"
+        total=len(test_data) * len(sigmas), desc="Running test"
     ) as pbar:
         for entry in test_data:
             tile_gray = entry["tile_gray"]
@@ -559,7 +546,6 @@ def calibrate_with_dynamic_threshold(
                     conf = det.score.value
                     detections.append((x1, x2, y1, y2, conf))
 
-                # Dynamic prediction
                 features = compute_tile_features(blurred, detections)
                 feat_vec = [features[k] for k in feature_names]
                 X_test = np.array([feat_vec])
@@ -579,7 +565,6 @@ def calibrate_with_dynamic_threshold(
                     }
                 )
 
-                # Store for static evaluation
                 test_data_by_sigma[sigma].append(
                     {
                         "gt_count": gt_count,
@@ -594,7 +579,6 @@ def calibrate_with_dynamic_threshold(
 
     df_dynamic = pd.DataFrame(results_dynamic)
 
-    # Compute dynamic MAPE per sigma
     mape_per_sigma_dynamic = {}
     for sigma in sigmas:
         sub = df_dynamic[df_dynamic["sigma"] == sigma]
@@ -613,12 +597,7 @@ def calibrate_with_dynamic_threshold(
         if mape_per_sigma_dynamic
         else np.nan
     )
-    print(f"Overall Dynamic MAPE: {overall_mape_dynamic:.2f}%")
 
-    # --- Static threshold evaluation on test tiles (same threshold for all sigmas) ---
-    print(
-        f"Evaluating static threshold = {static_threshold:.2f} on all test tiles..."
-    )
     results_static = []
     for sigma, data in test_data_by_sigma.items():
         for d in data:
@@ -633,7 +612,6 @@ def calibrate_with_dynamic_threshold(
             )
     df_static = pd.DataFrame(results_static)
 
-    # Compute static MAPE per sigma
     mape_per_sigma_static = {}
     for sigma in sigmas:
         sub = df_static[df_static["sigma"] == sigma]
@@ -652,14 +630,11 @@ def calibrate_with_dynamic_threshold(
         if mape_per_sigma_static
         else np.nan
     )
-    print(f"Overall Static MAPE: {overall_mape_static:.2f}%")
 
-    # --- Create output folder ---
     subfolder = create_unique_subfolder(str(Save_folder), str(Experiment_name))
     dynamic_folder = os.path.join(subfolder, "Dynamic Confidence Threshold")
     os.makedirs(dynamic_folder, exist_ok=True)
 
-    # --- Generate side-by-side scatter plots for each sigma ---
     sns.set(rc={"figure.dpi": 150, "savefig.dpi": 150})
     for sigma in sigmas:
         sub_dyn = df_dynamic[df_dynamic["sigma"] == sigma]
@@ -747,13 +722,12 @@ def calibrate_with_dynamic_threshold(
 
         plt.tight_layout()
         plot_path = os.path.join(
-            dynamic_folder, f"comparison_sigma_{sigma}.png"
+            dynamic_folder, f"Error_plot_for_blur_sigma_{sigma}.png"
         )
         fig.savefig(plot_path, bbox_inches="tight")
         plt.close(fig)
 
-    # --- Save regressor and reference points ---
-    model_path = os.path.join(dynamic_folder, "dynamic_thr.pkl")
+    model_path = os.path.join(dynamic_folder, "dynamic_threshold.pkl")
     with open(model_path, "wb") as f:
         pickle.dump(
             {
@@ -773,7 +747,6 @@ def calibrate_with_dynamic_threshold(
             os.path.join(dynamic_folder, "reference_points.csv"), index=False
         )
 
-    # --- Metadata ---
     comparison_summary = ""
     for sigma in sigmas:
         mape_dyn = mape_per_sigma_dynamic.get(sigma, np.nan)
@@ -782,9 +755,9 @@ def calibrate_with_dynamic_threshold(
 
     current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
     metadata = f"""Experiment time: {current_date}
-Calibration method: dynamic threshold (k‑NN regression on patch features) using POINTS
-Phase image stack: {Select_Phase_stack.name}, shape {image_data.shape}
-Phase model: {Phase_model.name} ({model_type})
+Calibration method: dynamic threshold using points
+Image: {Select_Phase_stack.name}, shape {image_data.shape}
+Model: {Phase_model.name} ({model_type})
 Division size: {Division_size}
 Calibration proportion: {Calibration_proportion}
 Random seed: {Random_seed}
@@ -798,7 +771,7 @@ Maximum blur strength: {Max_blur_strength} (blur strengths tested: {sigmas})
 --- Training details ---
 Number of training samples (tiles × sigmas): {len(X)}
 Feature names: {feature_names}
-k‑NN k = 2
+k‑NN k = 1
 
 --- Static threshold (from sigma=0 calibration) ---
 Static threshold: {static_threshold:.2f}
@@ -825,7 +798,7 @@ Dynamic threshold per-sigma MAPE (over tiles with gt>0):
         f.write(metadata)
 
     viewer.window._status_bar._toggle_activity_dock(False)
-    show_info("Dynamic threshold calibration (kNN) completed.")
+    show_info("Dynamic threshold calibration completed.")
 
     summary = (
         f"Calibration completed.\n"
