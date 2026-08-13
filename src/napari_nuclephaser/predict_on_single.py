@@ -256,7 +256,7 @@ def _parse_metadata(metadata_path):
     Experiment_name={
         "tooltip": "Name of the subfolder that will be created for the results (TTA Detection_mode only)."
     },
-    Save_folder={"Detection_mode": "d"},
+    Save_folder={"mode": "d"},
     call_button="Predict",
     auto_call=False,
     result_widget=False,
