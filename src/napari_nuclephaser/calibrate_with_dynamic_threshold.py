@@ -22,6 +22,11 @@ from sklearn.neighbors import KNeighborsRegressor
 from sklearn.preprocessing import StandardScaler
 from torch import cuda
 
+try:
+    from skimage.util import view_as_windows
+except ImportError:
+    from numpy.lib.stride_tricks import sliding_window_view as view_as_windows
+
 from napari_nuclephaser.utils import create_unique_subfolder, initialize_model
 
 warnings.filterwarnings(action="ignore", category=FutureWarning)
@@ -197,6 +202,121 @@ def find_static_threshold(all_confs, all_gts):
             best_error = total_error
             best_thr = round(thr, 2)
     return best_thr, best_error
+
+
+def build_threshold_map(
+    tile_gray, detections, regressor, scaler, feature_names, win_size, stride
+):
+    """
+    Build a threshold map for a single tile using the sliding-window approach.
+    Returns list of (center_x, center_y, threshold) for each window.
+    """
+    h, w = tile_gray.shape
+    if win_size > h or win_size > w:
+        win_size = max(h, w)
+        stride = win_size
+
+    x_starts = list(range(0, w - win_size + 1, stride))
+    y_starts = list(range(0, h - win_size + 1, stride))
+    if x_starts[-1] + win_size < w:
+        x_starts.append(w - win_size)
+    if y_starts[-1] + win_size < h:
+        y_starts.append(h - win_size)
+
+    windows = view_as_windows(tile_gray, (win_size, win_size), step=stride)
+    n_y, n_x, win_h, win_w = windows.shape
+
+    windows_flat = windows.reshape(-1, win_h, win_w).astype(np.float64)
+
+    means = np.mean(windows_flat, axis=(1, 2))
+    stds = np.std(windows_flat, axis=(1, 2))
+    medians = np.median(windows_flat, axis=(1, 2))
+    p25s = np.percentile(windows_flat, 25, axis=(1, 2))
+    p75s = np.percentile(windows_flat, 75, axis=(1, 2))
+    iqrs = p75s - p25s
+    mins = np.min(windows_flat, axis=(1, 2))
+    maxs = np.max(windows_flat, axis=(1, 2))
+    ranges = maxs - mins
+    rms_contrasts = np.sqrt(
+        np.mean((windows_flat - means[:, None, None]) ** 2, axis=(1, 2))
+    )
+
+    lap_full = cv2.Laplacian(tile_gray, cv2.CV_64F, ksize=3)
+    lap_windows = view_as_windows(lap_full, (win_size, win_size), step=stride)
+    lap_windows_flat = lap_windows.reshape(-1, win_size, win_size)
+    lap_vars = np.var(lap_windows_flat, axis=(1, 2))
+
+    entropies = np.zeros(windows_flat.shape[0])
+    for idx, win in enumerate(windows_flat):
+        hist, _ = np.histogram(win, bins=256, range=(0, 255))
+        hist = hist.astype(np.float64)
+        hist /= hist.sum() + 1e-12
+        entropies[idx] = -np.sum(hist * np.log2(hist + 1e-12))
+
+    energies = np.sum(windows_flat**2, axis=(1, 2))
+    height_width_ratio = win_size / win_size
+
+    feature_arrays = {
+        "height/width": np.full(n_y * n_x, height_width_ratio),
+        "mean": means,
+        "std": stds,
+        "median": medians,
+        "p25": p25s,
+        "p75": p75s,
+        "iqr": iqrs,
+        "min": mins,
+        "max": maxs,
+        "range": ranges,
+        "rms_contrast": rms_contrasts,
+        "lap_var": lap_vars,
+        "entropy": entropies,
+        "energy": energies,
+    }
+
+    centers = np.array(
+        [((x1 + x2) / 2, (y1 + y2) / 2) for (x1, x2, y1, y2, _) in detections]
+    )
+    confs = np.array([conf for (_, _, _, _, conf) in detections])
+
+    x_indices = np.searchsorted(x_starts, centers[:, 0], side="right") - 1
+    y_indices = np.searchsorted(y_starts, centers[:, 1], side="right") - 1
+    x_indices = np.clip(x_indices, 0, n_x - 1)
+    y_indices = np.clip(y_indices, 0, n_y - 1)
+
+    thresholds = [0.01, 0.1, 0.2, 0.3]
+    density_grids = {}
+    for thr in thresholds:
+        mask = confs >= thr
+        counts = np.zeros((n_y, n_x), dtype=np.float64)
+        if np.any(mask):
+            np.add.at(counts, (y_indices[mask], x_indices[mask]), 1)
+        density_grids[f"density_{thr:.2f}"] = counts / (win_size * win_size)
+
+    for thr in thresholds:
+        key = f"density_{thr:.2f}"
+        feature_arrays[key] = density_grids[key].ravel()
+
+    # top10_area: use global from detections list (computed per tile)
+    sorted_dets = sorted(detections, key=lambda d: d[4], reverse=True)
+    n_top = max(1, int(0.1 * len(sorted_dets)))
+    top_dets = sorted_dets[:n_top]
+    areas = [(x2 - x1) * (y2 - y1) for (x1, x2, y1, y2, _) in top_dets]
+    top10_area = np.mean(areas) if areas else 0.0
+    feature_arrays["top10_area"] = np.full(n_y * n_x, top10_area)
+
+    X_win = np.column_stack([feature_arrays[name] for name in feature_names])
+    X_win_scaled = scaler.transform(X_win)
+    thresholds_pred = regressor.predict(X_win_scaled)
+    threshold_grid = thresholds_pred.reshape(n_y, n_x)
+
+    window_centers = []
+    for yi, y0 in enumerate(y_starts):
+        for xi, x0 in enumerate(x_starts):
+            win_cx = x0 + win_size / 2
+            win_cy = y0 + win_size / 2
+            thr = threshold_grid[yi, xi]
+            window_centers.append((win_cx, win_cy, thr))
+    return window_centers
 
 
 @magic_factory(
@@ -494,7 +614,6 @@ def calibrate_with_dynamic_threshold(
         static_calib_confs, static_calib_gts
     )
 
-    # --- Train kNN regressor ---
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     regressor = KNeighborsRegressor(n_neighbors=1)
@@ -506,6 +625,9 @@ def calibrate_with_dynamic_threshold(
 
     results_dynamic = []
     test_data_by_sigma = defaultdict(list)
+
+    win_size = Sahi_size // 2
+    stride = win_size // 2
 
     with progress(
         total=len(test_data) * len(sigmas), desc="Running test"
@@ -546,25 +668,59 @@ def calibrate_with_dynamic_threshold(
                     conf = det.score.value
                     detections.append((x1, x2, y1, y2, conf))
 
-                features = compute_tile_features(blurred, detections)
-                feat_vec = [features[k] for k in feature_names]
-                X_test = np.array([feat_vec])
-                X_test_scaled = scaler.transform(X_test)
-                predicted_thr = regressor.predict(X_test_scaled)[0]
+                # Build threshold map for this tile
+                window_centers = build_threshold_map(
+                    blurred,
+                    detections,
+                    regressor,
+                    scaler,
+                    feature_names,
+                    win_size,
+                    stride,
+                )
 
-                confs = [d[4] for d in detections]
-                pred_count_dyn = sum(1 for c in confs if c >= predicted_thr)
+                # For each detection, compute weighted threshold and count
+                sigma_val = win_size / 4.0
+                pred_count = 0
+                for x1, x2, y1, y2, conf in detections:
+                    px = (x1 + x2) / 2
+                    py = (y1 + y2) / 2
+                    total_weight = 0.0
+                    weighted_thr = 0.0
+                    for cx, cy, thr in window_centers:
+                        half = win_size / 2
+                        if (cx - half) <= px <= (cx + half) and (
+                            cy - half
+                        ) <= py <= (cy + half):
+                            dist2 = (px - cx) ** 2 + (py - cy) ** 2
+                            weight = np.exp(-dist2 / (2 * sigma_val**2))
+                            weighted_thr += weight * thr
+                            total_weight += weight
+                    if total_weight > 0:
+                        final_thr = weighted_thr / total_weight
+                    else:
+                        # fallback: nearest window
+                        min_dist = float("inf")
+                        final_thr = 0.5
+                        for cx, cy, thr in window_centers:
+                            dist = (px - cx) ** 2 + (py - cy) ** 2
+                            if dist < min_dist:
+                                min_dist = dist
+                                final_thr = thr
+                    if conf >= final_thr:
+                        pred_count += 1
 
                 results_dynamic.append(
                     {
                         "sigma": sigma,
                         "frame": frame,
                         "gt_count": gt_count,
-                        "pred_count": pred_count_dyn,
-                        "pred_thr": predicted_thr,
+                        "pred_count": pred_count,
                     }
                 )
 
+                # Also store for static evaluation (unchanged)
+                confs = [d[4] for d in detections]
                 test_data_by_sigma[sigma].append(
                     {
                         "gt_count": gt_count,
@@ -644,7 +800,6 @@ def calibrate_with_dynamic_threshold(
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
-        # Dynamic plot
         if not sub_dyn.empty:
             sns.scatterplot(
                 data=sub_dyn,
@@ -665,9 +820,9 @@ def calibrate_with_dynamic_threshold(
             )
             mape_dyn = mape_per_sigma_dynamic.get(sigma, np.nan)
             ax1.set_title(
-                f"Dynamic (kNN)\nMAPE = {mape_dyn:.2f}%"
+                f"Dynamic (kNN threshold map)\nMAPE = {mape_dyn:.2f}%"
                 if not np.isnan(mape_dyn)
-                else "Dynamic (kNN)\nMAPE = N/A"
+                else "Dynamic (kNN threshold map)\nMAPE = N/A"
             )
             ax1.legend(
                 title="Frame", bbox_to_anchor=(1.05, 1), loc="upper left"
@@ -682,7 +837,6 @@ def calibrate_with_dynamic_threshold(
                 transform=ax1.transAxes,
             )
 
-        # Static plot
         if not sub_stat.empty:
             sns.scatterplot(
                 data=sub_stat,
@@ -755,7 +909,7 @@ def calibrate_with_dynamic_threshold(
 
     current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
     metadata = f"""Experiment time: {current_date}
-Calibration method: dynamic threshold using points
+Calibration method: dynamic threshold with points
 Image: {Select_Phase_stack.name}, shape {image_data.shape}
 Model: {Phase_model.name} ({model_type})
 Division size: {Division_size}
@@ -776,7 +930,7 @@ k‑NN k = 1
 --- Static threshold (from sigma=0 calibration) ---
 Static threshold: {static_threshold:.2f}
 
---- Testing results ---
+--- Testing results (using threshold map) ---
 Dynamic threshold per-sigma MAPE (over tiles with gt>0):
 """
     for sigma, mape in mape_per_sigma_dynamic.items():
@@ -803,7 +957,7 @@ Dynamic threshold per-sigma MAPE (over tiles with gt>0):
     summary = (
         f"Calibration completed.\n"
         f"Static threshold = {static_threshold:.2f} (overall MAPE = {overall_mape_static:.2f}%)\n"
-        f"Dynamic (kNN) overall MAPE = {overall_mape_dynamic:.2f}%\n"
+        f"Dynamic (kNN threshold map) overall MAPE = {overall_mape_dynamic:.2f}%\n"
         f"Comparison:\n{comparison_summary}"
     )
     return summary
