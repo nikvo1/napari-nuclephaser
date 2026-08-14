@@ -207,10 +207,6 @@ def find_static_threshold(all_confs, all_gts):
 def build_threshold_map(
     tile_gray, detections, regressor, scaler, feature_names, win_size, stride
 ):
-    """
-    Build a threshold map for a single tile using the sliding-window approach.
-    Returns list of (center_x, center_y, threshold) for each window.
-    """
     h, w = tile_gray.shape
     if win_size > h or win_size > w:
         win_size = max(h, w)
@@ -296,7 +292,6 @@ def build_threshold_map(
         key = f"density_{thr:.2f}"
         feature_arrays[key] = density_grids[key].ravel()
 
-    # top10_area: use global from detections list (computed per tile)
     sorted_dets = sorted(detections, key=lambda d: d[4], reverse=True)
     n_top = max(1, int(0.1 * len(sorted_dets)))
     top_dets = sorted_dets[:n_top]
@@ -610,6 +605,7 @@ def calibrate_with_dynamic_threshold(
     X = np.array(samples_X)
     y = np.array(samples_y)
 
+    minimal_threshold = min(samples_y) if samples_y else 0.01
     static_threshold, _ = find_static_threshold(
         static_calib_confs, static_calib_gts
     )
@@ -668,7 +664,6 @@ def calibrate_with_dynamic_threshold(
                     conf = det.score.value
                     detections.append((x1, x2, y1, y2, conf))
 
-                # Build threshold map for this tile
                 window_centers = build_threshold_map(
                     blurred,
                     detections,
@@ -679,7 +674,6 @@ def calibrate_with_dynamic_threshold(
                     stride,
                 )
 
-                # For each detection, compute weighted threshold and count
                 sigma_val = win_size / 4.0
                 pred_count = 0
                 for x1, x2, y1, y2, conf in detections:
@@ -699,7 +693,6 @@ def calibrate_with_dynamic_threshold(
                     if total_weight > 0:
                         final_thr = weighted_thr / total_weight
                     else:
-                        # fallback: nearest window
                         min_dist = float("inf")
                         final_thr = 0.5
                         for cx, cy, thr in window_centers:
@@ -719,7 +712,6 @@ def calibrate_with_dynamic_threshold(
                     }
                 )
 
-                # Also store for static evaluation (unchanged)
                 confs = [d[4] for d in detections]
                 test_data_by_sigma[sigma].append(
                     {
@@ -888,6 +880,7 @@ def calibrate_with_dynamic_threshold(
                 "regressor": regressor,
                 "scaler": scaler,
                 "feature_names": feature_names,
+                "minimal_threshold": minimal_threshold,
             },
             f,
         )
@@ -926,6 +919,7 @@ Maximum blur strength: {Max_blur_strength} (blur strengths tested: {sigmas})
 Number of training samples (tiles × sigmas): {len(X)}
 Feature names: {feature_names}
 k‑NN k = 1
+Minimal optimal threshold (for inference initialisation): {minimal_threshold:.2f}
 
 --- Static threshold (from sigma=0 calibration) ---
 Static threshold: {static_threshold:.2f}
@@ -958,6 +952,7 @@ Dynamic threshold per-sigma MAPE (over tiles with gt>0):
         f"Calibration completed.\n"
         f"Static threshold = {static_threshold:.2f} (overall MAPE = {overall_mape_static:.2f}%)\n"
         f"Dynamic (kNN threshold map) overall MAPE = {overall_mape_dynamic:.2f}%\n"
+        f"Minimal optimal threshold = {minimal_threshold:.2f}\n"
         f"Comparison:\n{comparison_summary}"
     )
     return summary

@@ -524,11 +524,14 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         regressor = model_data["regressor"]
         scaler = model_data["scaler"]
         feature_names = model_data["feature_names"]
+        minimal_threshold = model_data.get("minimal_threshold", 0.01)
 
         viewer.window._status_bar._toggle_activity_dock(True)
 
         initialization_pbar = progress(total=0, desc="Initializing model")
-        model, _ = initialize_model(str(Select_model), 0.01, cuda_available)
+        model, _ = initialize_model(
+            str(Select_model), minimal_threshold, cuda_available
+        )
         initialization_pbar.close()
 
         pbar_slices = None
