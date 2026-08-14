@@ -18,6 +18,7 @@ from napari.utils import progress
 from napari.utils.notifications import show_error, show_info
 from sahi.predict import get_sliced_prediction
 from scipy.ndimage import gaussian_filter
+from sklearn.model_selection import GridSearchCV
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.preprocessing import StandardScaler
 from torch import cuda
@@ -602,6 +603,8 @@ def calibrate_with_dynamic_threshold(
         )
         return None
 
+    tuning_pbar = progress(total=0, desc="Tuning dynamic threshold")
+
     X = np.array(samples_X)
     y = np.array(samples_y)
 
@@ -612,8 +615,20 @@ def calibrate_with_dynamic_threshold(
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-    regressor = KNeighborsRegressor(n_neighbors=1)
-    regressor.fit(X_scaled, y)
+
+    param_grid = {"n_neighbors": [1, 2, 3, 4, 5]}
+    grid_search = GridSearchCV(
+        KNeighborsRegressor(),
+        param_grid,
+        cv=5,
+        scoring="neg_mean_absolute_error",
+        n_jobs=-1,
+    )
+    grid_search.fit(X_scaled, y)
+    best_k = grid_search.best_params_["n_neighbors"]
+    regressor = grid_search.best_estimator_
+
+    tuning_pbar.close()
 
     feature_names = sorted(
         compute_tile_features(np.zeros((10, 10), dtype=np.uint8), []).keys()
@@ -881,6 +896,7 @@ def calibrate_with_dynamic_threshold(
                 "scaler": scaler,
                 "feature_names": feature_names,
                 "minimal_threshold": minimal_threshold,
+                "best_k": best_k,
             },
             f,
         )
@@ -918,7 +934,7 @@ Maximum blur strength: {Max_blur_strength} (blur strengths tested: {sigmas})
 --- Training details ---
 Number of training samples (tiles × sigmas): {len(X)}
 Feature names: {feature_names}
-k‑NN k = 1
+Best k (tuned via 5‑fold CV): {best_k}
 Minimal optimal threshold (for inference initialisation): {minimal_threshold:.2f}
 
 --- Static threshold (from sigma=0 calibration) ---
@@ -952,6 +968,7 @@ Dynamic threshold per-sigma MAPE (over tiles with gt>0):
         f"Calibration completed.\n"
         f"Static threshold = {static_threshold:.2f} (overall MAPE = {overall_mape_static:.2f}%)\n"
         f"Dynamic (kNN threshold map) overall MAPE = {overall_mape_dynamic:.2f}%\n"
+        f"Best k = {best_k}\n"
         f"Minimal optimal threshold = {minimal_threshold:.2f}\n"
         f"Comparison:\n{comparison_summary}"
     )
