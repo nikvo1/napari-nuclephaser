@@ -25,3 +25,8 @@ At each point, a circle with this size will be created.
 .. warning:: You should be careful with Label size! If it will be large, two points located nearby can merge into one label!
 
 .. hint:: You can use Label size to your advantage! If you have a lot of false positives that are located very closely to true positives, you can set Label size large enough for them to merge!
+
+Output
+++++++
+
+Adds a Napari Labels layer with circles at each point position, with a diameter equal to **Label size**.

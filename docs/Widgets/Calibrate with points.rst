@@ -7,11 +7,8 @@ Description
 This widget is used for finding optimal confidence threshold of the YOLO model for specific use case (cell type, microscopy options etc.)
 Learn more about it at :doc:`Confidence threshold calibration page </General information/Confidence threshold calibration>`.
 
-The most reliable option is :doc:`Calibrate with DAPI </Widgets/Calibrate with DAPI>`. However, it is based on staining your sample with fluorescent nuclei dye.
-If you don't have that option, you can skip the staining and calibrate with manual annotation of nuclei.
-
-See :doc:`Calibrate with DAPI widget page </Widgets/Calibrate with DAPI>` to learn how calibration algorithm works behind the scenes.
-This widget works exactly the same way, but the role of "perfect predictor" falls on user instead of fluorescent nuclei detector.
+.. note::
+        In NuclePhaser >= 0.2.5, this widget supports simultaneous calibration on multiple images! Use 1-dimensional stack of images and points.
 
 .. figure:: ../Images/Calibration_and_test.jpg
         :scale: 20 %
@@ -20,15 +17,16 @@ This widget works exactly the same way, but the role of "perfect predictor" fall
 
         Workflow diagram of Calibrate with DAPI widget. Calibrate with points widget works the same way, but user's manual annotations are used as ground truth instead of fluorescent nuclei.
 
-.. note:: You need a large image for the use of that widget, the larger - the better. At least 6400x6400 pixels is recommended.
+.. note:: You need a large image(s) for the use of that widget, the larger - the better. At least 6400x6400 pixels is recommended.
 
-You need a large image for that option and Napari Points layer with marked nuclei for that image.
-You have two options of creating that layer:
+You need a large image(s) for that option and Napari Points layer with marked nuclei for that image(s).
+You have three options of creating that layer:
 
-.. hint:: Second option is much faster!
+.. hint:: Second and third options are much faster!
 
 * Manually label all the nuclei. Above the image layer icon on the left, press the New point layer button (the left one with six dots). Use `Napari set of tools <https://napari.org/dev/howtos/layers/points.html>`_ to label all the nuclei.
-* Manually correct annotations of uncalibrated model. Use :doc:`Predict on single image widget </Widgets/Predict on single image>` with arbitrary confidence threshold and correct the result Points layer using `Napari set of tools <https://napari.org/dev/howtos/layers/points.html>`_. In our practice, adding missing points is more convenient than deleting extra, so we use higher confidence threshold.
+* Manually correct annotations of uncalibrated model. Use :doc:`Predict on single image widget </Widgets/Predict on single image>` or :doc:`Predict on 1-stack </Widgets/Predict on 1-stack>` with arbitrary confidence threshold and correct the result Points layer using `Napari set of tools <https://napari.org/dev/howtos/layers/points.html>`_. In our practice, adding missing points is more convenient than deleting extra, so we use higher confidence threshold.
+* (Optimal) Manually correct annotations of fluorescent nuclei detector on images with fluorescent nuclei stain. Use :doc:`Predict on single image widget </Widgets/Predict on single image>` or :doc:`Predict on 1-stack </Widgets/Predict on 1-stack>` with arbitrary confidence threshold and correct the result Points layer using `Napari set of tools <https://napari.org/dev/howtos/layers/points.html>`_. Downside: it requires staining of samples.
 
 .. figure:: ../Images/Napari_tools.jpg
         :scale: 40 %
@@ -37,10 +35,11 @@ You have two options of creating that layer:
 
         Napari set of tools to edit Points layer. Circle with plus sign inside (Second tool) is used for adding new points. Use arrow (Third tool) to select extra points (with pressed Ctrl to select several) and Delete button or Cross (First tool) to remove extra markers.
 
+
 Parameters
 ++++++++++
 
-**Select Phase image** field is used for selecting the brightfield image that will be used for calibration
+**Select Phase image** field is used for selecting the brightfield image(s) that will be used for calibration.
 
 **Select points layer** field is used for selecting Napari Points layer with manual annotations of nuclei (see description above for options of creating it)
 
@@ -67,18 +66,22 @@ Further parameters are **advanced settings**. Consider changing them only if you
 **Random seed** is used for exact reproduction of data.
 The calibration and test parts are divided randomly, using the same random seed will result in the same division.
 
-**Postprocess** field is a part of sliced inference parameters.
-It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+**SAHI parameters** – these are advanced settings; see :doc:`Sliced inference overview </General information/Sliced inference overview>` for details:
+  - **Sahi size** – sliding window size in pixels.
+  - **Sahi overlap** – relative overlap between windows.
+  - **Postprocess** – algorithm to merge overlapping detections (GREEDYNMM, NMS, NMM).
+  - **Match metric** – metric to compare overlaps (IOS or IOU).
+  - **Intersection threshold** – threshold for merging overlaps.
 
-**Match metric** field is a part of sliced inference parameters.
-It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+We've empirically determined the optimal combination of parameters for detecting cell nuclei: **NMS** with **IOS** threshold **0.34** (optimal only for NuclePhaser >= 0.4.0).
+We recommend changing them only if you have a different task than detecting nuclei.
 
-**Intersection threshold** field is a part of sliced inference parameters.
-It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+Output
+++++++
 
-**Sahi size** parameter determines the size of the sliding window used for sliced inference.
+The widget creates a folder with:
 
-.. important:: Splitting large images into small ones and sliced inference are completely different and independent processes! For example, if you have Division size of 1280, each of your small images will be processed with sliding window of 640 pixels.
-
-**Sahi overlap** field is a part of sliced inference parameters.
-It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+- **Calibration_error_plot.png** – a scatterplot of ground truth counts (from points) vs. predicted counts, with MAPE shown.
+- **reference_points.csv** – the points used for calibration (for reproducibility).
+- **metadata.txt** – all parameters, per‑frame thresholds, and MAPE details.
+- If TTA is enabled, a **TTA** subfolder with the best combination and its MAPE is also created.

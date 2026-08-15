@@ -4,7 +4,7 @@ Count points on images
 Description
 +++++++++++
 
-This is an auxiliary widget that is primarily used for manual counting of objects in napari.
+This is an auxiliary widget that is primarily used for manual counting objects in napari.
 You can manually mark the objects as Napari.Points layer with Napari set of tools.
 
 .. figure:: ../Images/Napari_tools.jpg
@@ -20,3 +20,8 @@ Parameters
 ++++++++++
 
 **Select points layer** field is used for selecting Napari.Points layer that you want to count points on.
+
+Output
+++++++
+
+Returns a summary string with the total number of points in the layer. If saving is enabled, saves a `.csv` and/or `.xlsx` file with counts.

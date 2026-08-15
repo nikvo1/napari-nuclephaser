@@ -9,16 +9,16 @@ Option 1 (simple): Using standalone napari app
 
 2. Search, download and install napari-nuclephaser plugin by opening the app, navigating to Plugins window and choosing Install/Uninstall plugins.
 
-Option 2 (recommended): Using Anaconda
+Option 2: Using Anaconda
 ++++++++++++++++++++++++++++++++++++++
 
-We recommend installation using `Anaconda Distribution <https://www.anaconda.com/>`_
+You can install napari and NuclePhaser using `Anaconda Distribution <https://www.anaconda.com/>`_
 
 1. Install Anaconda with `Installation instructions <https://www.anaconda.com/docs/getting-started/anaconda/install>`_
 
 2. Open Anaconda Prompt using Search Bar or Anaconda Navigator
 
-3. Create new environment with default anaconda packages using command
+3. Create new environment using command
 
 .. code-block:: python
 

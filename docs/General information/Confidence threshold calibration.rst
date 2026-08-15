@@ -67,7 +67,7 @@ These models can be used as "perfect predictors". See more at :doc:`Calibrate wi
 3. With manual detection of nuclei. **Calibrate with points** widget is used for that.
 If you don't have fluorescent nuclei image, you can manually mark all the nuclei! See more at :doc:`Calibrate with points widget page </Widgets/Calibrate with points>`.
 
-.. tip:: Instead of marking all nuclei manually, you can run prediction with uncalibrated model with :doc:`Predict on single image widget </Widgets/Predict on single image>` and then correct the wrong detections. It is much faster than do everything manually!
+.. tip:: Instead of marking all nuclei manually, you can run prediction with uncalibrated model with :doc:`Predict on single image widget </Widgets/Predict on single image>` and then correct the wrong detections. It is much faster than doing everything manually!
 
 .. figure:: ../Images/Calibration_methods.png
         :scale: 9 %
@@ -102,7 +102,8 @@ What if accuracy isn't high enough?
 +++++++++++++++++++++++++++++++++++
 
 If the accuracy of the model on your specific use case is considered low, there are certain options to increase it.
-You can test another model from NuclePhaser model zoo. In our practice, small models sometimes better than large ones!
+You can test another model from NuclePhaser model zoo. In our practice, small models sometimes perform better than large ones!
 Also, you can try :doc:`TTA (test-time augmentations) </General information/Test-time augmentations (TTA)>`. It is a way of increasing accuracy by sacrificing inference time.
+The other possible explanation is varying microscopy conditions: contrast, defocus, cell density etc. To adapt for that, use :doc:`Dynamic confidence threshold </General information/Dynamic confidence threshold>`.
 Finally, you can finetune NuclePhaser model on you specific use case using `Colab notebook <https://colab.research.google.com/drive/1hKMVQqYS0I_GrkYvdz23tPc8FCv2oJvh?usp=sharing>`_.
 However, it requires fluorescent nuclear stain.

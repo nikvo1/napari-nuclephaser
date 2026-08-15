@@ -5,11 +5,12 @@ Description
 +++++++++++
 
 This widget is used for running prediction with :doc:`YOLO </General information/Object detection overview>` and :doc:`SAHI </General information/Sliced inference overview>` on a single image.
-An image could be of any size, there is no lower or upper limit.
-An image could be of any format downloadable in Napari (RGB or single channel, 8-bit or 16-bit).
+An image can be of any size (no lower or upper limit) and any format supported by Napari (RGB or single channel, 8‑bit or 16‑bit).
 
-The widget returns detections in form of points (Napari Points layer) or bounding boxes (Napari Shapes layer) with or without confidence scores.
-It also automatically returns the number of objects detected on an image in **result layer name**.
+The widget can run in three **Detection modes**:
+  - **Regular detection** – uses a fixed confidence threshold.
+  - Detection with :doc:`TTA </General information/Test-time augmentations (TTA)>` – uses test‑time augmentations (requires a metadata file from :doc:`Calibrate with points </Widgets/Calibrate with points>`).
+  - Detection with :doc:`Dynamic threshold </General information/Dynamic confidence threshold>` – uses a dynamic threshold model (requires a `.pkl` file from :doc:`Calibrate with dynamic threshold </Widgets/Calibrate dynamic threshold>`).
 
 .. figure:: ../Images/Predict_single_image.jpg
         :scale: 30 %
@@ -18,61 +19,58 @@ It also automatically returns the number of objects detected on an image in **re
 
         Predict on single image widget results. It returns bounding boxes and confidence scores, as well as number of objects in the name of the result layer.
 
-.. important:: The widget prints the progress in the command line that you used to initiate the Napari. Unfortunately, if you're installed Napari as a stanalone application, the widget will run silently.
-
-.. figure:: ../Images/Single_image_CLI.jpg
-        :scale: 50 %
-        :align: center
-        :alt: The image didn't load(
-
-        Widget prints the process of running the algorithm in the command line that was used to initiate the Napari.
-
 Parameters
 ++++++++++
 
-**Select image** field is used for selecting an image to run inference on.
-Accepts only single images, if a stack is chosen, an error will be shown.
+**Select image** – the image to run inference on. Only single images are accepted; stacks will raise an error.
 
-**Select model** field is used to select YOLO model that will perform inference.
-Currently only small models (n and s) are downloaded automatically due to the limited size of package on PyPI.
-Larger models can be downloaded on `NuclePhaser GitHub page <https://github.com/nikvo1/napari-nuclephaser>`_
+**Select model** – the YOLO model to use for inference. Only small models (n and s) are automatically downloaded; larger models can be downloaded from the `NuclePhaser GitHub page <https://github.com/nikvo1/napari-nuclephaser>`_.
 
-**Postprocess** field is a part of sliced inference parameters.
-It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+**Detection mode** – choose between:
+  - Regular detection
+  - Detection with :doc:`TTA </General information/Test-time augmentations (TTA)>` (requires a `.txt` metadata file)
+  - Detection with :doc:`Dynamic threshold </General information/Dynamic confidence threshold>` (requires a `.pkl` model file)
 
-**Match metric** field is a part of sliced inference parameters.
-It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+**Mode file** – the file needed for TTA or dynamic threshold modes (`.txt` for TTA, `.pkl` for dynamic threshold). This field is only active when the corresponding mode is selected.
 
-**Generate points** checkbox is used to select the type of widget's output.
-Select it if you want to generate Napari Points layer with a point for each detection at the center of the bounding box.
+**Output format** – choose the type of layer to add:
+  - Points (centered and bounding boxes centers)
+  - Bounding boxes
+  - Bounding boxes with confidence scores
 
-**Generate bbox** checkbox is used to select the type of widget's output.
-Select it if you want to generate Napari Shapes layer with a rectangle for each detection representing the bounding box.
+**Confidence threshold** – the threshold used in **Regular detection** mode. This is the most important parameter for counting accuracy; see :doc:`Confidence threshold calibration </General information/Confidence threshold calibration>`.
 
-**Show confidence** checkbox is used to add confidence scores for each bounding box.
-Works only if **Generate bbox** checkbox is active.
+**SAHI parameters** – these are advanced settings; see :doc:`Sliced inference overview </General information/Sliced inference overview>` for details:
+  - **Sahi size** – sliding window size in pixels.
+  - **Sahi overlap** – relative overlap between windows.
+  - **Postprocess** – algorithm to merge overlapping detections (GREEDYNMM, NMS, NMM).
+  - **Match metric** – metric to compare overlaps (IOS or IOU).
+  - **Intersection threshold** – threshold for merging overlaps.
 
-**Use TTA** checkbox is used for running inference with TTA (test-time augmentations). Requires passing metadata_TTA.txt created by Calibrate with points widget.
-Learn more at :doc:`page about TTA </General information/Test-time augmentations (TTA)>`.
+We've empirically determined the optimal combination of parameters for detecting cell nuclei: **NMS** with **IOS** threshold **0.34** (optimal only for NuclePhaser >= 0.4.0).
+We recommend changing them only if you have a different task than detecting nuclei.
 
-**TTA metadata file** field is used for passing the metadata_TTA.txt file created by Calibrate with points widget.
-Learn more at :doc:`page about TTA </General information/Test-time augmentations (TTA)>`.
+**Points size** – the size of points in the Points layer (in pixels).
 
-**Confidence threshold** field is used to set up a confidence threshold for the YOLO model.
-Confidence threshold is the **most important paramter** for the task of counting objects.
-Learn more about how to find the optimal threshold for your specific use case at :doc:`Confidence threshold calibration page </General information/Confidence threshold calibration>`.
+**Bbox thickness** – the thickness of bounding box lines (in pixels).
 
-**Sahi size** parameter determines the size of the sliding window used for sliced inference.
-Learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+**Score text size** – the font size of confidence scores (if shown).
 
-**Sahi overlap** field is a part of sliced inference parameters.
-It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+**Save result** – if checked, saves the count in a subfolder.
 
-**Intersection threshold** field is a part of sliced inference parameters.
-It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+**Save format** – choose CSV, XLSX, or Both.
 
-**Points size** parameter determines the size of points in pixels that will be created if **Generate points** is chosen.
+**Experiment name** – the name of the subfolder for saved results (only used when Save result is enabled). If the folder already exists, a numbered suffix is added.
 
-**Bbox thickness** parameter determines the thickness of lines of rectangles if **Generate bbox** parameter is chosen.
+**Save folder** – the directory where the results will be saved.
 
-**Score text size** parameter determines the size of confidence score text sizes if **Show confidence** parameter is chosen.
+Output
+++++++
+
+The widget adds one or more layers to the viewer:
+
+- **Points** – a Napari Points layer with a point at the centre of each detection (if **Points** output format is selected).
+- **Bounding boxes** – a Napari Shapes layer with rectangles for each detection (if **Bounding boxes** or **Bounding boxes with confidence scores** is selected).
+- The number of detected objects is automatically included in the layer name.
+
+Optionally, if **Save result** is enabled, a folder is created with a `.csv` and/or `.xlsx` file containing the count (averaged for TTA) and a metadata file.

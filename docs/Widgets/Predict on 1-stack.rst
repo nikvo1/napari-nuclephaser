@@ -4,71 +4,53 @@ Predict on 1-stack
 Description
 +++++++++++
 
-This widget is used for running prediction with :doc:`YOLO </General information/Object detection overview>` and :doc:`SAHI </General information/Sliced inference overview>` on one-dimensional stacks of images.
-Images could be of any size, there is no lower or upper limit.
-An image could be of any format downloadable in Napari (RGB or single channel, 8-bit or 16-bit).
+This widget runs :doc:`YOLO </General information/Object detection overview>` with :doc:`SAHI </General information/Sliced inference overview>` on a **one‑dimensional stack** of images. Images can be any size and format.
 
-The widget returns detections in form of points (Napari Points layer) for each image in a stack.
-The widget can also generate .csv or .xslx file with counting results for each image if the task is to :doc:`count objects </Biological tasks guidelines/Population growth curves>`
-Combined with :doc:`Convert points to labels widget </Widgets/Convert points to labels.rst>`, it can generate labels for :doc:`Individual cells tracking </Biological tasks guidelines/Individual cells tracking>`.
+The widget can run in three **Detection modes**:
+    - **Regular detection** – uses a fixed confidence threshold.
+    - Detection with :doc:`TTA </General information/Test-time augmentations (TTA)>` – uses test‑time augmentations (requires a metadata file from :doc:`Calibrate with points </Widgets/Calibrate with points>`).
+    - Detection with :doc:`Dynamic threshold </General information/Dynamic confidence threshold>` – uses a dynamic threshold model (requires a `.pkl` file from :doc:`Calibrate with dynamic threshold </Widgets/Calibrate dynamic threshold>`).
 
-.. important:: The widget prints the progress in the command line that you used to initiate the Napari.
-
-.. figure:: ../Images/Stack_CLI.jpg
-        :scale: 50 %
-        :align: center
-        :alt: The image didn't load(
-
-        Widget prints the process of running the algorithm in the command line that was used to initiate the Napari.
+The widget adds a **Points layer** for each frame (or a combined layer) containing the filtered detections. It can also save a count table (CSV/XLSX) for each frame.
 
 Parameters
 ++++++++++
 
-**Select stack** field is used for selecting a stack of images to run inference on.
-Accepts only 1-dimensional stack of images, if a single image or 2-dimensional stack is chosen, it will return an error.
+**Select stack** – the 1‑dimensional stack of images. Only 1‑stacks are accepted; single images or 2‑stacks will raise an error.
 
-**Select model** field is used to select YOLO model that will perform inference.
-Currently only small models (n and s) are downloaded automatically due to the limited size of package on PyPI.
-Larger models can be downloaded on `NuclePhaser GitHub page <https://github.com/nikvo1/napari-nuclephaser>`_
+**Select model** – the YOLO model to use.
 
-**Confidence threshold** field is used to set up a confidence threshold for the YOLO model.
-Confidence threshold is the **most important paramter** for the task of counting objects.
-Learn more about how to find the optimal threshold for your specific use case at :doc:`Confidence threshold calibration page </General information/Confidence threshold calibration>`.
+**Detection mode** – choose between:
+  - Regular detection
+  - Detection with :doc:`TTA </General information/Test-time augmentations (TTA)>` (requires a `.txt` metadata file)
+  - Detection with :doc:`Dynamic threshold </General information/Dynamic confidence threshold>` (requires a `.pkl` model file)
 
-**Use TTA** checkbox is used for running inference with TTA (test-time augmentations). Requires passing metadata_TTA.txt created by Calibrate with points widget.
-Learn more at :doc:`page about TTA </General information/Test-time augmentations (TTA)>`.
+**Mode file** – the file needed for TTA or dynamic threshold modes (`.txt` for TTA, `.pkl` for dynamic threshold). This field is only active when the corresponding mode is selected.
 
-**TTA metadata file** field is used for passing the metadata_TTA.txt file created by Calibrate with points widget.
-Learn more at :doc:`page about TTA </General information/Test-time augmentations (TTA)>`.
+**Confidence threshold** – used in **Regular detection** mode.
 
-**Save result** checkbox is used for selecting whether you need counting results or not.
-If the task is to count the number of objects on each frame, check this box.
-It will create a subfolder with **Experiment name** at **Save folder** location with .csv and/or .xlsx file with counting results, as well as metadata.txt file with all the parameters for exact reproduction of results.
+**SAHI parameters** – these are advanced settings; see :doc:`Sliced inference overview </General information/Sliced inference overview>` for details:
+  - **Sahi size** – sliding window size in pixels.
+  - **Sahi overlap** – relative overlap between windows.
+  - **Postprocess** – algorithm to merge overlapping detections (GREEDYNMM, NMS, NMM).
+  - **Match metric** – metric to compare overlaps (IOS or IOU).
+  - **Intersection threshold** – threshold for merging overlaps.
 
-**Save folder** is used for selecting a folder in which the counting results will be saved if **Save result** box is checked.
+We've empirically determined the optimal combination of parameters for detecting cell nuclei: **NMS** with **IOS** threshold **0.34** (optimal only for NuclePhaser >= 0.4.0).
+We recommend changing them only if you have a different task than detecting nuclei.
 
-**Experiment name** is used for setting up the subfolder name in **Save folder** for saving the results.
-If such folder already exists, will create another subfolder with *Experiment name1* or *Experiment name2*.
+**Points size** – the size of points in the output Points layer.
 
-Further parameters are **advanced settings**. Consider changing them only if you have troubles with default ones.
+**Save result** – if checked, saves per‑frame counts.
 
-**Postprocess** field is a part of sliced inference parameters.
-It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+**Save format** – CSV, XLSX, or Both.
 
-**Match metric** field is a part of sliced inference parameters.
-It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+**Experiment name** – subfolder name.
 
-**Sahi size** parameter determines the size of the sliding window used for sliced inference.
-Learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+**Save folder** – directory for results.
 
-**Sahi overlap** field is a part of sliced inference parameters.
-It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+Output
+++++++
 
-**Intersection threshold** field is a part of sliced inference parameters.
-It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
-
-**Points size** parameter determines the size of points in pixels that will be created.
-
-**Save csv** checkbox is used for choosing the counting results saving format. Check it if you want .csv format file. Works only if **Save result** box is checked.
-
-**Save xlsx** checkbox is used for choosing the counting results saving format. Check it if you want .xlsx format file. Works only if **Save result** box is checked.
+- A **Points layer** (3‑dimensional: frame, y, x) containing the detections for the whole stack.
+- If **Save result** is enabled, a subfolder is created with a `.csv` and/or `.xlsx` file containing the per‑frame counts and a metadata file.
