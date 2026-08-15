@@ -1,35 +1,49 @@
 import os
+import pathlib
+import platform
 
 from sahi import AutoDetectionModel
 
 
 def initialize_model(model_path, confidence_threshold, device):
     """Takes a YOLO model path, confidence threshold and device and returns an initialized model
-    without explicitly passing model type"""
+    without explicitly passing model type.
+    Handles models trained on Ubuntu (PosixPath) when running on Windows.
+    """
+
+    original_posix = None
+    if platform.system() == "Windows":
+        original_posix = pathlib.PosixPath
+        pathlib.PosixPath = pathlib.WindowsPath
 
     model_type_list = ("yolov5", "ultralytics", "yolov8", "yolov11", "yolo11")
 
-    for model_type in model_type_list:
-        try:
-            detection_model = AutoDetectionModel.from_pretrained(
-                model_type=model_type,
-                model_path=model_path,
-                confidence_threshold=confidence_threshold,
-                device=device,
-            )
-            if model_type != "yolov5":
-                detection_model.model.overrides["max_det"] = 10000
-            return (
-                detection_model,
-                model_type,
-            )  # Return the successfully initialized model
-        except TypeError:
-            continue  # Continue to the next model type
+    try:
+        for model_type in model_type_list:
+            try:
+                detection_model = AutoDetectionModel.from_pretrained(
+                    model_type=model_type,
+                    model_path=model_path,
+                    confidence_threshold=confidence_threshold,
+                    device=device,
+                )
+                if model_type != "yolov5":
+                    detection_model.model.overrides["max_det"] = 10000
+                return detection_model, model_type
 
-    # Raise an error if all attempts fail
-    raise RuntimeError(
-        "Failed to initialize model from the provided file path."
-    )
+            except TypeError:
+                continue
+
+            except NotImplementedError:
+                continue
+
+        raise RuntimeError(
+            f"Could not initialize model with any type from {model_type_list} for path {model_path}"
+        )
+
+    finally:
+        if original_posix is not None:
+            pathlib.PosixPath = original_posix
 
 
 def create_unique_subfolder(parent_folder, subfolder_name):

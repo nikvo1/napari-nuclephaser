@@ -33,6 +33,9 @@ contributions:
     - id: napari-nuclephaser.predict_on_two_stack
       title: Predict on 2-dimensional stack of images
       python_name: napari_nuclephaser.predict_two_stack:predict_on_two_stack
+    - id: napari-nuclephaser.calibrate_with_dynamic_threshold
+      title: Calibrate model and assess accuracy with dynamic threshold
+      python_name: napari_nuclephaser.calibrate_with_dynamic_threshold:calibrate_with_dynamic_threshold
   widgets:
     - command: napari-nuclephaser.make_points
       display_name: Predict on single image
@@ -46,6 +49,8 @@ contributions:
       display_name: Calibrate with DAPI image
     - command: napari-nuclephaser.calibrate_with_points
       display_name: Calibrate with points
+    - command: napari-nuclephaser.calibrate_with_dynamic_threshold
+      display_name: Calibrate with dynamic threshold (beta)
     - command: napari-nuclephaser.convert_points_to_labels
       display_name: Convert points to labels
     - command: napari-nuclephaser.count_points

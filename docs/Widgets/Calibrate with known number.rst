@@ -36,17 +36,17 @@ Widget will return the confidence threshold of the YOLO model that will return a
 
 Further parameters are **advanced settings**. Consider changing them only if you have troubles with default ones.
 
-**Postprocess** field is a part of sliced inference parameters.
-It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+**SAHI parameters** – these are advanced settings; see :doc:`Sliced inference overview </General information/Sliced inference overview>` for details:
+  - **Sahi size** – sliding window size in pixels.
+  - **Sahi overlap** – relative overlap between windows.
+  - **Postprocess** – algorithm to merge overlapping detections (GREEDYNMM, NMS, NMM).
+  - **Match metric** – metric to compare overlaps (IOS or IOU).
+  - **Intersection threshold** – threshold for merging overlaps.
 
-**Match metric** field is a part of sliced inference parameters.
-It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+We've empirically determined the optimal combination of parameters for detecting cell nuclei: **NMS** with **IOS** threshold **0.34** (optimal only for NuclePhaser >= 0.4.0).
+We recommend changing them only if you have a different task than detecting nuclei.
 
-**Intersection threshold** field is a part of sliced inference parameters.
-It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+Output
+++++++
 
-**Sahi size** parameter determines the size of the sliding window used for sliced inference.
-Learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
-
-**Sahi overlap** field is a part of sliced inference parameters.
-It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+The widget returns the optimal threshold as a string in the result widget. No files are saved.

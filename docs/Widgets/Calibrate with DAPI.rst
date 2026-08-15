@@ -7,8 +7,12 @@ Description
 This widget is used for finding optimal confidence threshold of the YOLO model for specific use case (cell type, microscopy options etc.)
 Learn more about it at :doc:`Confidence threshold calibration page </General information/Confidence threshold calibration>`.
 
-This option is the most reliable, but at the same time the most demanding.
-You need to stain your cells with DAPI or other nuclear fluorescent dye and obtain pair of images brightfield - fluorescent nuclei.
+.. warning::
+        This widget is suboptimal for calibration - if the fluorescent detector makes mistakes, there is no way to correct them with that widget.
+        :doc:`Calibrate with points widget </Widgets/Calibrate with points>` is more reliable: you can run fluorescent model with :doc:`Predict on single image </Widgets/Predict on single image>` or :doc:`Predict on 1-stack </Widgets/Predict on 1-stack>`, manually correct detections and then calibrate.
+
+        .. note::
+        This widget doesn't support simultaneous calibration on multiple images, while :doc:`Calibrate with points widget </Widgets/Calibrate with points>` does!
 
 .. figure:: ../Images/Calibration_pair.jpg
         :scale: 30 %
@@ -72,18 +76,20 @@ Further parameters are **advanced settings**. Consider changing them only if you
 **Random seed** is used for exact reproduction of data.
 The calibration and test parts are divided randomly, using the same random seed will result in the same division.
 
-**Postprocess** field is a part of sliced inference parameters.
-It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+**SAHI parameters** – these are advanced settings; see :doc:`Sliced inference overview </General information/Sliced inference overview>` for details:
+  - **Sahi size** – sliding window size in pixels.
+  - **Sahi overlap** – relative overlap between windows.
+  - **Postprocess** – algorithm to merge overlapping detections (GREEDYNMM, NMS, NMM).
+  - **Match metric** – metric to compare overlaps (IOS or IOU).
+  - **Intersection threshold** – threshold for merging overlaps.
 
-**Match metric** field is a part of sliced inference parameters.
-It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+We've empirically determined the optimal combination of parameters for detecting cell nuclei: **NMS** with **IOS** threshold **0.34** (optimal only for NuclePhaser >= 0.4.0).
+We recommend changing them only if you have a different task than detecting nuclei.
 
-**Intersection threshold** field is a part of sliced inference parameters.
-It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+Output
+++++++
 
-**Sahi size** parameter determines the size of the sliding window used for sliced inference.
+The widget creates a subfolder with:
 
-.. important:: Splitting large images into small ones and sliced inference are completely different and independent processes! For example, if you have Division size of 1280, each of your small images will be processed with sliding window of 640 pixels.
-
-**Sahi overlap** field is a part of sliced inference parameters.
-It's an optional parameter, learn more at :doc:`page about sliced inference </General information/Sliced inference overview>`.
+- **Calibration error plot.png** – a scatterplot comparing DAPI‑based ground truth counts (x‑axis) versus model predictions (y‑axis), with MAPE shown in the title.
+- **metadata.txt** – a complete record of all parameters, thresholds, and MAPE values.

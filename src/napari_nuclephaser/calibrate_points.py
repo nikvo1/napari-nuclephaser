@@ -199,7 +199,9 @@ def _test_frame(
     Returns a DataFrame with columns: Frame, Ground_truth_count, Predicted_count.
     """
     results = []
-    with progress(total=len(tiles), desc=f"Frame {frame_idx} testing") as pbar:
+    with progress(
+        total=len(tiles), desc=f"Frame {frame_idx + 1} testing"
+    ) as pbar:
         for tile, gt in zip(tiles, ground_truth_counts, strict=False):
             result = get_sliced_prediction(
                 tile,
@@ -234,7 +236,7 @@ def _test_frame(
     Calibration_proportion={
         "tooltip": "Fraction of tiles used for calibration; the rest are used for testing."
     },
-    Test_with_TTA={
+    Calibrate_with_TTA={
         "widget_type": "CheckBox",
         "tooltip": "Run test‑time augmentation search to improve counting accuracy sacrificing the inference time.",
     },
@@ -271,14 +273,14 @@ def calibrate_with_points(
     Phase_model=first_model,
     Division_size=640,
     Calibration_proportion=0.1,
-    Test_with_TTA: bool = False,
+    Calibrate_with_TTA: bool = False,
     Save_folder=pathlib.Path(),
     Experiment_name="Experiment",
     ADVANCED_SETTINGS="",
     Random_seed=42,
-    Postprocess="GREEDYNMM",
+    Postprocess="NMS",
     Match_metric="IOS",
-    Intersection_threshold=0.3,
+    Intersection_threshold=0.34,
     Sahi_size=640,
     Sahi_overlap: float = 0.2,
 ):
@@ -297,7 +299,6 @@ def calibrate_with_points(
 
     Returns a string summarising the best threshold and overall MAPE.
     """
-    # --- Validate inputs -------------------------------------------------
     image_data = _ensure_numpy(Select_Phase_stack.data)
     points_data = _ensure_numpy(Select_Points_layer.data)
 
@@ -354,29 +355,24 @@ def calibrate_with_points(
         )
         return None
 
-    # Ensure we have points for each frame that exists in the image stack
     for t in range(n_frames):
         if t not in points_per_frame:
             points_per_frame[t] = []
-            print(f"Warning: No points for frame {t}. Skipping this frame.")
-    # Remove frames that have no images (just in case)
     frames_with_images = [t for t in range(n_frames) if t < len(images)]
     if not frames_with_images:
         show_error("No valid frames found.")
         return None
 
-    # --- Initialise model (temporary low confidence for calibration) -----
-    print("Initialising model for calibration...")
+    viewer.window._status_bar._toggle_activity_dock(True)
+
+    initialization_pbar = progress(total=0, desc="Initializing model")
     phase_model, model_type = initialize_model(
         str(Phase_model), 0.01, cuda_available
     )
-    print(f"Model ready. Type: {model_type}, device: {cuda_available}")
+    initialization_pbar.close()
 
-    # --- Per‑frame preparation and threshold finding ---------------------
-    frame_data = []  # each element: {frame_idx, test_tiles, test_gt}
+    frame_data = []
     thresholds_per_frame = []
-
-    viewer.window._status_bar._toggle_activity_dock(True)
 
     # Outer progress bar for frames in calibration
     with progress(
@@ -386,22 +382,16 @@ def calibrate_with_points(
             img = images[t]
             pts = points_per_frame.get(t, [])
             if len(pts) == 0:
-                print(f"Frame {t} has no points, skipping.")
                 pbar_outer.update(1)
                 continue
 
-            # Split into calibration and test tiles
             calib_tiles, calib_gt, test_tiles, test_gt = _prepare_frame(
                 img, pts, Division_size, Calibration_proportion, Random_seed
             )
             if not calib_tiles:
-                print(
-                    f"Frame {t}: no calibration tiles (image too small or no points in tiles). Skipping."
-                )
                 pbar_outer.update(1)
                 continue
 
-            # Find best threshold for this frame (inner progress inside function)
             best_thr = _find_best_threshold_for_frame(
                 calib_tiles,
                 calib_gt,
@@ -414,9 +404,6 @@ def calibrate_with_points(
                 frame_idx=t,  # pass frame index for inner progress display
             )
             if best_thr is None:
-                print(
-                    f"Frame {t}: model made no detections on calibration tiles. Skipping."
-                )
                 pbar_outer.update(1)
                 continue
 
@@ -428,7 +415,6 @@ def calibrate_with_points(
                     "test_gt": test_gt,
                 }
             )
-            print(f"Frame {t}: best threshold = {best_thr:.3f}")
             pbar_outer.update(1)
 
     if not thresholds_per_frame:
@@ -437,22 +423,18 @@ def calibrate_with_points(
         )
         return None
 
-    # --- Average threshold ------------------------------------------------
     overall_threshold = np.mean(thresholds_per_frame)
     print(
         f"Calibration complete. Overall best threshold = {overall_threshold:.3f}"
     )
 
-    # --- Initialise calibrated model -------------------------------------
     calibrated_model, _ = initialize_model(
         str(Phase_model), overall_threshold, cuda_available
     )
 
-    # --- Test on all test tiles ------------------------------------------
     all_test_results = []
-    # Outer progress bar for frames in testing
     with progress(
-        total=len(frame_data), desc="Testing images"
+        total=len(frame_data), desc="Running test"
     ) as pbar_outer_test:
         for fd in frame_data:
             df_frame = _test_frame(
@@ -470,16 +452,14 @@ def calibrate_with_points(
             all_test_results.append(df_frame)
             pbar_outer_test.update(1)
 
-    # Filter out any empty DataFrames (e.g., frames with no test tiles)
     non_empty_results = [df for df in all_test_results if not df.empty]
+    # Handling zero test data
     if not non_empty_results:
-        print("No test tiles available. Skipping evaluation.")
-        # Still save reference points and metadata (without plot)
+        show_info("No test tiles available. Skipping evaluation.")
         subfolder = create_unique_subfolder(
             str(Save_folder), str(Experiment_name)
         )
 
-        # Save points (same as original)
         if points_data.ndim == 2:
             if points_data.shape[1] == 2:
                 points_to_save = np.column_stack(
@@ -493,12 +473,11 @@ def calibrate_with_points(
             os.path.join(subfolder, "reference_points.csv"), index=False
         )
 
-        # Save metadata without MAPE/plot
         current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
         metadata = f"""Experiment time: {current_date}
-Calibration method: from points (multi‑frame)
-Phase image stack: {Select_Phase_stack.name}, shape {image_data.shape}
-Phase model: {Phase_model.name} ({model_type})
+Calibration method: from points
+Image: {Select_Phase_stack.name}, shape {image_data.shape}
+Model: {Phase_model.name} ({model_type})
 Division size: {Division_size}
 Calibration proportion: {Calibration_proportion}
 Random seed: {Random_seed}
@@ -507,7 +486,6 @@ Match metric: {Match_metric}
 Intersection threshold: {Intersection_threshold}
 SAHI size: {Sahi_size}
 SAHI overlap: {Sahi_overlap}
-Frames used: {[fd["frame_idx"] for fd in frame_data]}
 Per‑frame thresholds: {dict(zip([fd["frame_idx"] for fd in frame_data], thresholds_per_frame, strict=False))}
 Overall threshold: {overall_threshold:.3f}
 Overall MAPE: No test data
@@ -517,13 +495,11 @@ Per‑frame MAPE: No test data
         with open(metadata_path, "w", encoding="utf-8") as f:
             f.write(metadata)
 
-        show_info("Calibration completed (no test tiles).")
         return f"Best threshold = {overall_threshold:.3f} (no test data)"
 
     # Otherwise, proceed with normal evaluation using non_empty_results
     test_df = pd.concat(non_empty_results, ignore_index=True)
 
-    # --- Compute MAPE (skip tiles with ground truth = 0) -----------------
     test_df["AbsPercentageError"] = np.where(
         test_df["Ground_truth_count"] > 0,
         np.abs(
@@ -533,11 +509,8 @@ Per‑frame MAPE: No test data
         * 100,
         np.nan,
     )
-    overall_mape = test_df[
-        "AbsPercentageError"
-    ].mean()  # NaN are automatically skipped
+    overall_mape = test_df["AbsPercentageError"].mean()
 
-    # Per‑frame MAPE
     per_frame_mape = (
         test_df.groupby("Frame")["AbsPercentageError"].mean().to_dict()
     )
@@ -545,7 +518,6 @@ Per‑frame MAPE: No test data
     for t, mape in per_frame_mape.items():
         print(f"Frame {t}: MAPE = {mape:.2f}%")
 
-    # --- Generate scatter plot with colour by frame ----------------------
     print("Drawing error plot...")
     sns.set(rc={"figure.dpi": 150, "savefig.dpi": 150})
     fig, ax = plt.subplots()
@@ -571,7 +543,6 @@ Per‑frame MAPE: No test data
     )
     ax.legend(title="Frame", bbox_to_anchor=(1.05, 1), loc="upper left")
 
-    # --- Save results ----------------------------------------------------
     subfolder = create_unique_subfolder(str(Save_folder), str(Experiment_name))
     plot_path = os.path.join(subfolder, "Calibration_error_plot.png")
     fig.savefig(plot_path, bbox_inches="tight")
@@ -579,7 +550,6 @@ Per‑frame MAPE: No test data
 
     if points_data.ndim == 2:
         if points_data.shape[1] == 2:
-            # add a dummy frame column for single frame
             points_to_save = np.column_stack(
                 (np.zeros(len(points_data), dtype=int), points_data)
             )
@@ -591,12 +561,11 @@ Per‑frame MAPE: No test data
         os.path.join(subfolder, "reference_points.csv"), index=False
     )
 
-    # Save metadata
     current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
     metadata = f"""Experiment time: {current_date}
-Calibration method: from points (multi‑frame)
-Phase image stack: {Select_Phase_stack.name}, shape {image_data.shape}
-Phase model: {Phase_model.name} ({model_type})
+Calibration method: with points
+Image: {Select_Phase_stack.name}, shape {image_data.shape}
+Model: {Phase_model.name} ({model_type})
 Division size: {Division_size}
 Calibration proportion: {Calibration_proportion}
 Random seed: {Random_seed}
@@ -605,7 +574,6 @@ Match metric: {Match_metric}
 Intersection threshold: {Intersection_threshold}
 SAHI size: {Sahi_size}
 SAHI overlap: {Sahi_overlap}
-Frames used: {[fd["frame_idx"] for fd in frame_data]}
 Per‑frame thresholds: {dict(zip([fd["frame_idx"] for fd in frame_data], thresholds_per_frame, strict=False))}
 Overall threshold: {overall_threshold:.3f}
 Overall MAPE: {overall_mape:.2f}%
@@ -615,7 +583,7 @@ Per‑frame MAPE: {per_frame_mape}
     with open(metadata_path, "w", encoding="utf-8") as f:
         f.write(metadata)
 
-    if not Test_with_TTA:
+    if not Calibrate_with_TTA:
         viewer.window._status_bar._toggle_activity_dock(False)
         return f"Best threshold = {overall_threshold:.3f}, Overall MAPE = {overall_mape:.2f}%"
 
@@ -708,7 +676,6 @@ Per‑frame MAPE: {per_frame_mape}
             frame_test_gt.append(test_gt)
             frame_indices.append(t)
 
-            # Also collect all test tiles (flat) for later combination search
             for tile, gt in zip(test_tiles, test_gt, strict=False):
                 all_test_tiles_original.append(tile)
                 all_test_gt.append(gt)
@@ -719,11 +686,8 @@ Per‑frame MAPE: {per_frame_mape}
         show_error("No test tiles available for TTA. Aborting TTA.")
         return f"Native: threshold={overall_threshold:.3f}, MAPE={overall_mape:.2f}% (TTA skipped)"
 
-    # For each augmentation, calibrate threshold using all frames' calibration tiles
     for aug_func, aug_name in augmentations:
-        print(f"TTA calibration for: {aug_name}")
         thresholds_per_frame = []
-        # Progress bar over frames for this augmentation
         with progress(
             total=len(frame_calib_tiles), desc=f"Calibration with {aug_name}"
         ) as pbar_cal:
@@ -753,7 +717,6 @@ Per‑frame MAPE: {per_frame_mape}
             print(f"  {aug_name}: no valid calibration, skipping")
             tta_thresholds[aug_name] = None
 
-    # Remove augmentations that failed calibration
     valid_augs = [
         name for name, thr in tta_thresholds.items() if thr is not None
     ]
@@ -769,11 +732,9 @@ Per‑frame MAPE: {per_frame_mape}
         aug_func = next(
             func for func, name in augmentations if name == aug_name
         )
-        print(f"Testing augmentation: {aug_name} (thr={thr:.3f})")
         model_aug, _ = initialize_model(str(Phase_model), thr, cuda_available)
         pred_counts = []
-        # Progress bar over tiles for this augmentation
-        with progress(total=n_tiles, desc=f"Testing {aug_name}") as pbar:
+        with progress(total=n_tiles, desc=f"Testing with {aug_name}") as pbar:
             for tile in all_test_tiles_original:
                 aug_tile = aug_func(tile)
                 result = get_sliced_prediction(
@@ -800,7 +761,6 @@ Per‑frame MAPE: {per_frame_mape}
     best_combo = None
     best_avg_pred = None
 
-    print("Searching for best combination of augmentations...")
     for r in range(1, len(valid_augs) + 1):
         for combo_indices in itertools.combinations(range(len(valid_augs)), r):
             avg_pred = np.mean(
@@ -858,7 +818,7 @@ Per‑frame MAPE: {per_frame_mape}
     # Save metadata
     current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
     tta_metadata = f"""Experiment time: {current_date}
-Phase model: {Phase_model.name} ({model_type})
+Model: {Phase_model.name} ({model_type})
 TTA mode enabled
 Native MAPE: {overall_mape:.2f}%
 Best TTA combination: {' + '.join(best_combo)}
@@ -885,7 +845,7 @@ Postprocess: {Postprocess}, match_metric={Match_metric}, iou_thr={Intersection_t
         f.write(tta_metadata)
 
     show_info(
-        f"TTA completed. Best MAPE: {best_mape:.2f}% (native: {overall_mape:.2f}%)"
+        f"Calibration with TTA is complete. Best MAPE: {best_mape:.2f}% (native: {overall_mape:.2f}%)"
     )
 
     # Return comparison string

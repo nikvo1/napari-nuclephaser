@@ -31,7 +31,7 @@ Sliding windows should *overlap*, otherwise the objects on the junctions will be
 SAHI overlap of 0.2 means that windows will overlap by 20% horizontally and vertically.
 
 Since sliding windows are overlapping, there will be some double detections in the overlapping zones.
-There is an algorithm for that called **Postprocess**.
+There is an algorithm for that called **Postprocessing**.
 
 * **NMS (Non-Maximum Suppression)** will delete extra detections.
 * **NMM (Non-Maximum Merge)** will merge extra detections into one.
@@ -45,7 +45,14 @@ There are two options for this **Match metric**:
 * **IOU (Intersection over Union)**
 * **IOS (Intersection over Smaller area)**
 
-The bigger the metrics, the heavier the overlap. In our practice, IOS works better.
+The bigger the metrics, the heavier the overlap.
 
 If IOU or IOS is bigger than **Intersection threshold**, detections will be considered overlapping and will be processed by **Postprocess**.
-In case of cell nuclei, they rarely overlap, so lower intersection threshold valules are recommended.
+
+We empirically determined the best combination of parameters for postprocessing in case of cell nuclei: **NMS** with **IOS** threshold **0.34**.
+These parameters are set as default in all NuclePhaser >= 0.4.0 widgets.
+
+.. warning::
+        NuclePhaser >= 0.4.0 uses an addition to default sahi sliced prediction algorithm - detections that touch border of sliding windows are deleted before postprocessing.
+        This is a serious change: optimal combination **NMS**, **IOS** and intersection threshold **0.34** will work only in NuclePhaser >= 0.4.0.
+        The other important note: prediction results with same models and parameters from NuclePhaser < 0.4.0 and >= 0.4.0 will not reproduce exactly! There will be slight difference in bounding boxes geometry, but the difference in nuclei count should be minimal (if any).

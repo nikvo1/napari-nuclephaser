@@ -34,6 +34,7 @@ To learn more about the algorithms behind the project, navigate to general infor
    General information/Object detection overview.rst
    General information/Sliced inference overview.rst
    General information/Confidence threshold calibration.rst
+   General information/Dynamic confidence threshold.rst
    General information/Test-time augmentations (TTA).rst
 
 To learn more about widgets and their functions, navigate to the widget page you need:
@@ -49,4 +50,13 @@ To learn more about widgets and their functions, navigate to the widget page you
    Widgets/Calibrate with DAPI.rst
    Widgets/Calibrate with points.rst
    Widgets/Convert points to labels.rst
-   Widgets/Count points on single image.rst
+   Widgets/Count points.rst
+   Widgets/Calibrate dynamic threshold.rst
+
+Frequently asked questions
+
+.. toctree::
+   :maxdepth: 1
+   :caption: FAQS
+
+   FAQs/FAQs.rst

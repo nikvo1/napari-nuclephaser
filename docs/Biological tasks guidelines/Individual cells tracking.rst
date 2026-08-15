@@ -69,24 +69,11 @@ Step 7. Turn off the **Save result** checkmark. It will save count result in the
 
 Step 8. Press **Predict**.
 
-.. warning:: This algorithm can take a long time to run!
-
-Surprisingly, the most influential factor on waiting time is **number of objects on an image**.
-It's due to the fact that postprocess algorithm (NMS or NMM) has O(n\ :sup:`2`) `notation <https://en.wikipedia.org/wiki/Big_O_notation>`_, so it can take much more time than applying the deep learning algorithm itself.
-In our practice, inference time for one image exceeds 10-20 minutes when there are close to 100,000 objects on an image.
-
-.. hint:: You can track the process in the command line that you used to initiate the Napari (not available in standalone application). It provides an estimated time to process the whole stack.
-
-.. figure:: ../Images/Stack_CLI.jpg
-        :scale: 50 %
-        :align: center
-        :alt: The image didn't load(
-
-        Widget prints the process of running the algorithm in the command line that was used to initiate the Napari.
+.. warning:: This algorithm can take some time to run!
 
 Step 9. Correct the result Points using `Napari set of tools <https://napari.org/dev/howtos/layers/points.html>`_.
-Circle with plus sign inside (Second tool) is used for adding new points.
-Use arrow (Third tool) to select extra points (with pressed Ctrl to select several) and Delete button or Cross (First tool) to remove extra markers.
+Circle with plus sign inside (Second tool, shortcut 2 or P) is used for adding new points.
+Use arrow (Third tool, shortcut 3 or S) to select extra points (with pressed Ctrl to select several) and Delete button or Cross (First tool, shortcut 1) to remove extra markers.
 
 .. figure:: ../Images/Napari_tools.jpg
         :scale: 40 %

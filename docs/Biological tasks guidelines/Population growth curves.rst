@@ -105,7 +105,7 @@ Step 2. Create **Points** layer, where all nuclei are marked with points. You ha
         :align: center
         :alt: The image didn't load(
 
-        Napari set of tools to edit Points layer. Circle with plus sign inside (Second tool) is used for adding new points. Use arrow (Third tool) to select extra points (with pressed Ctrl to select several) and Delete button or Cross (First tool) to remove extra markers.
+        Napari set of tools to edit Points layer. Circle with plus sign inside (Second tool, shortcut 2 or P) is used for adding new points. Use arrow (Third tool, shortcut 3 or S) to select extra points (with pressed Ctrl to select several) and Delete button or Cross (First tool, shortcut 1) to remove extra markers.
 
 Step 3. Open **Calibrate with points** widget in NuclePhaser
 
@@ -124,7 +124,7 @@ Step 6. Choose **Division size**. The large image will be split into small ones 
 Division size determines the size of one small image.
 For example, if your large image is 6400x6400 pixels and the division size is 640, your large image will be split into 100 small ones.
 
-.. tip:: Division size can significantly affect the result measured accuracy! It happens because the larger the image, the more balanced false positives are with false negatives. Try increasing the division size if you see that your results in high MAPE and small amount of objects per image on accuracy scatterplot.
+.. tip:: Division size can significantly affect the result measured accuracy! It happens because the larger the image, the less there will be difficult detections at the border, and the more balanced false positives are with false negatives. Try increasing the division size if you see that your results in high MAPE and small amount of objects per image on accuracy scatterplot.
 
 Step 7 (Optional). Other parameters in the widget are optional. Learn more about them at :doc:`Calibrate with points widget page </Widgets/Calibrate with points>`.
 
@@ -169,7 +169,7 @@ Step 8. Press **Calibrate**.
 
 This calibration algorithm is fast and should quickly provide the result optimal confidence threshold in the line below the **Calibrate** button.
 
-.. note:: If the accuracy isn't high enough, there are two ways of increasing it. You can finetune NuclePhaser model using `Colab notebook <https://colab.research.google.com/drive/1hKMVQqYS0I_GrkYvdz23tPc8FCv2oJvh?usp=sharing>`_ or use :doc:`TTA </General information/Test-time augmentations (TTA)>`.
+.. note:: If the accuracy isn't high enough, there are several ways of increasing it. You can finetune NuclePhaser model using `Colab notebook <https://colab.research.google.com/drive/1hKMVQqYS0I_GrkYvdz23tPc8FCv2oJvh?usp=sharing>`_, as well as use :doc:`TTA </General information/Test-time augmentations (TTA)>` or :doc:`Dynamic confidence threshold </General information/Dynamic confidence threshold>`.
 
 Step 2: Applying the calibrated model to a stack of images
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -211,17 +211,6 @@ Step 9. Choose the format for saving the count results: **.csv** or **.xlsx**. Y
 
 Step 10. Press **Predict**.
 
-.. warning:: This algorithm can take a long time to run!
-
-Surprisingly, the most influential factor on waiting time is **number of objects on an image**.
-It's due to the fact that postprocess algorithm (NMS or NMM) has O(n\ :sup:`2`) `notation <https://en.wikipedia.org/wiki/Big_O_notation>`_, so it can take much more time than applying the deep learning algorithm itself.
-In our practice, inference time for one image exceeds 10-20 minutes when there are close to 100,000 objects on an image.
-
-.. figure:: ../Images/Stack_CLI.jpg
-        :scale: 50 %
-        :align: center
-        :alt: The image didn't load(
-
-        Widget prints the process of running the algorithm in the command line that was used to initiate the Napari.
+.. warning:: This algorithm can take some time to run!
 
 In the end, you will have .csv or .xslx file with count results that you can use for further processing and plotting graphs!
