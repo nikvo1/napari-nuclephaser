@@ -270,35 +270,41 @@ def build_threshold_map(
         "energy": energies,
     }
 
-    centers = np.array(
-        [((x1 + x2) / 2, (y1 + y2) / 2) for (x1, x2, y1, y2, _) in detections]
-    )
-    confs = np.array([conf for (_, _, _, _, conf) in detections])
+    # If no detections, set density features and top10_area to zero
+    if len(detections) == 0:
+        for thr in [0.01, 0.1, 0.2, 0.3]:
+            feature_arrays[f"density_{thr:.2f}"] = np.zeros(n_y * n_x)
+        feature_arrays["top10_area"] = np.zeros(n_y * n_x)
+    else:
+        centers = np.array(
+            [
+                ((x1 + x2) / 2, (y1 + y2) / 2)
+                for (x1, x2, y1, y2, _) in detections
+            ]
+        )
+        confs = np.array([conf for (_, _, _, _, conf) in detections])
 
-    x_indices = np.searchsorted(x_starts, centers[:, 0], side="right") - 1
-    y_indices = np.searchsorted(y_starts, centers[:, 1], side="right") - 1
-    x_indices = np.clip(x_indices, 0, n_x - 1)
-    y_indices = np.clip(y_indices, 0, n_y - 1)
+        x_indices = np.searchsorted(x_starts, centers[:, 0], side="right") - 1
+        y_indices = np.searchsorted(y_starts, centers[:, 1], side="right") - 1
+        x_indices = np.clip(x_indices, 0, n_x - 1)
+        y_indices = np.clip(y_indices, 0, n_y - 1)
 
-    thresholds = [0.01, 0.1, 0.2, 0.3]
-    density_grids = {}
-    for thr in thresholds:
-        mask = confs >= thr
-        counts = np.zeros((n_y, n_x), dtype=np.float64)
-        if np.any(mask):
-            np.add.at(counts, (y_indices[mask], x_indices[mask]), 1)
-        density_grids[f"density_{thr:.2f}"] = counts / (win_size * win_size)
+        thresholds = [0.01, 0.1, 0.2, 0.3]
+        for thr in thresholds:
+            mask = confs >= thr
+            counts = np.zeros((n_y, n_x), dtype=np.float64)
+            if np.any(mask):
+                np.add.at(counts, (y_indices[mask], x_indices[mask]), 1)
+            feature_arrays[f"density_{thr:.2f}"] = (
+                counts / (win_size * win_size)
+            ).ravel()
 
-    for thr in thresholds:
-        key = f"density_{thr:.2f}"
-        feature_arrays[key] = density_grids[key].ravel()
-
-    sorted_dets = sorted(detections, key=lambda d: d[4], reverse=True)
-    n_top = max(1, int(0.1 * len(sorted_dets)))
-    top_dets = sorted_dets[:n_top]
-    areas = [(x2 - x1) * (y2 - y1) for (x1, x2, y1, y2, _) in top_dets]
-    top10_area = np.mean(areas) if areas else 0.0
-    feature_arrays["top10_area"] = np.full(n_y * n_x, top10_area)
+        sorted_dets = sorted(detections, key=lambda d: d[4], reverse=True)
+        n_top = max(1, int(0.1 * len(sorted_dets)))
+        top_dets = sorted_dets[:n_top]
+        areas = [(x2 - x1) * (y2 - y1) for (x1, x2, y1, y2, _) in top_dets]
+        top10_area = np.mean(areas) if areas else 0.0
+        feature_arrays["top10_area"] = np.full(n_y * n_x, top10_area)
 
     X_win = np.column_stack([feature_arrays[name] for name in feature_names])
     X_win_scaled = scaler.transform(X_win)
