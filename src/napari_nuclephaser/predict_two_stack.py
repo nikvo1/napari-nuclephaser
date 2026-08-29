@@ -214,22 +214,19 @@ def build_threshold_map(
     tile_gray, detections, regressor, scaler, feature_names, win_size, stride
 ):
     h, w = tile_gray.shape
+
     if win_size > h or win_size > w:
         win_size = max(h, w)
         stride = win_size
 
-    x_starts = list(range(0, w - win_size + 1, stride))
-    y_starts = list(range(0, h - win_size + 1, stride))
+    n_x = (w - win_size) // stride + 1
+    n_y = (h - win_size) // stride + 1
+    x_starts = [i * stride for i in range(n_x)]
+    y_starts = [i * stride for i in range(n_y)]
 
     windows = view_as_windows(tile_gray, (win_size, win_size), step=stride)
-    n_y, n_x, win_h, win_w = windows.shape
 
-    if len(x_starts) != n_x:
-        x_starts = x_starts[:n_x]
-    if len(y_starts) != n_y:
-        y_starts = y_starts[:n_y]
-
-    windows_flat = windows.reshape(-1, win_h, win_w).astype(np.float64)
+    windows_flat = windows.reshape(-1, win_size, win_size).astype(np.float64)
 
     means = np.mean(windows_flat, axis=(1, 2))
     stds = np.std(windows_flat, axis=(1, 2))
@@ -299,6 +296,7 @@ def build_threshold_map(
         key = f"density_{thr:.2f}"
         feature_arrays[key] = density_grids[key].ravel()
 
+    # top10_area computed from detections (per frame)
     sorted_dets = sorted(detections, key=lambda d: d[4], reverse=True)
     n_top = max(1, int(0.1 * len(sorted_dets)))
     top_dets = sorted_dets[:n_top]
@@ -306,11 +304,13 @@ def build_threshold_map(
     top10_area = np.mean(areas) if areas else 0.0
     feature_arrays["top10_area"] = np.full(n_y * n_x, top10_area)
 
+    # Build feature matrix and predict thresholds
     X_win = np.column_stack([feature_arrays[name] for name in feature_names])
     X_win_scaled = scaler.transform(X_win)
     thresholds_pred = regressor.predict(X_win_scaled)
     threshold_grid = thresholds_pred.reshape(n_y, n_x)
 
+    # Create list of window centers with predicted thresholds
     window_centers = []
     for yi, y0 in enumerate(y_starts):
         for xi, x0 in enumerate(x_starts):
@@ -318,6 +318,7 @@ def build_threshold_map(
             win_cy = y0 + win_size / 2
             thr = threshold_grid[yi, xi]
             window_centers.append((win_cx, win_cy, thr))
+
     return window_centers
 
 
