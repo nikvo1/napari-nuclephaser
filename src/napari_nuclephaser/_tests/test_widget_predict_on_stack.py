@@ -20,11 +20,22 @@ def test_predict_on_stack_valid(make_napari_viewer, mocker, tmp_path):
     mock_sliced_pred = mocker.patch(
         "napari_nuclephaser.predict_one_stack.get_sliced_prediction"
     )
+    mock_det1 = MagicMock()
+    mock_det1.bbox.minx = 10
+    mock_det1.bbox.maxx = 30  # 10+20
+    mock_det1.bbox.miny = 10
+    mock_det1.bbox.maxy = 30  # 10+20
+    mock_det1.score.value = 0.9
+
+    mock_det2 = MagicMock()
+    mock_det2.bbox.minx = 30
+    mock_det2.bbox.maxx = 50  # 30+20
+    mock_det2.bbox.miny = 30
+    mock_det2.bbox.maxy = 50  # 30+20
+    mock_det2.score.value = 0.8
+
     mock_result = MagicMock()
-    mock_result.to_coco_predictions.return_value = [
-        {"bbox": [10, 10, 20, 20]},
-        {"bbox": [30, 30, 20, 20]},
-    ]
+    mock_result.object_prediction_list = [mock_det1, mock_det2]
     mock_sliced_pred.return_value = mock_result
 
     mock_show_info = mocker.patch(

@@ -214,22 +214,19 @@ def build_threshold_map(
     tile_gray, detections, regressor, scaler, feature_names, win_size, stride
 ):
     h, w = tile_gray.shape
+
     if win_size > h or win_size > w:
         win_size = max(h, w)
         stride = win_size
 
-    x_starts = list(range(0, w - win_size + 1, stride))
-    y_starts = list(range(0, h - win_size + 1, stride))
+    n_x = (w - win_size) // stride + 1
+    n_y = (h - win_size) // stride + 1
+    x_starts = [i * stride for i in range(n_x)]
+    y_starts = [i * stride for i in range(n_y)]
 
     windows = view_as_windows(tile_gray, (win_size, win_size), step=stride)
-    n_y, n_x, win_h, win_w = windows.shape
 
-    if len(x_starts) != n_x:
-        x_starts = x_starts[:n_x]
-    if len(y_starts) != n_y:
-        y_starts = y_starts[:n_y]
-
-    windows_flat = windows.reshape(-1, win_h, win_w).astype(np.float64)
+    windows_flat = windows.reshape(-1, win_size, win_size).astype(np.float64)
 
     means = np.mean(windows_flat, axis=(1, 2))
     stds = np.std(windows_flat, axis=(1, 2))
@@ -299,6 +296,7 @@ def build_threshold_map(
         key = f"density_{thr:.2f}"
         feature_arrays[key] = density_grids[key].ravel()
 
+    # top10_area computed from detections (per frame)
     sorted_dets = sorted(detections, key=lambda d: d[4], reverse=True)
     n_top = max(1, int(0.1 * len(sorted_dets)))
     top_dets = sorted_dets[:n_top]
@@ -306,11 +304,13 @@ def build_threshold_map(
     top10_area = np.mean(areas) if areas else 0.0
     feature_arrays["top10_area"] = np.full(n_y * n_x, top10_area)
 
+    # Build feature matrix and predict thresholds
     X_win = np.column_stack([feature_arrays[name] for name in feature_names])
     X_win_scaled = scaler.transform(X_win)
     thresholds_pred = regressor.predict(X_win_scaled)
     threshold_grid = thresholds_pred.reshape(n_y, n_x)
 
+    # Create list of window centers with predicted thresholds
     window_centers = []
     for yi, y0 in enumerate(y_starts):
         for xi, x0 in enumerate(x_starts):
@@ -318,6 +318,7 @@ def build_threshold_map(
             win_cy = y0 + win_size / 2
             thr = threshold_grid[yi, xi]
             window_centers.append((win_cx, win_cy, thr))
+
     return window_centers
 
 
@@ -343,6 +344,15 @@ def build_threshold_map(
         "filter": "*.txt;*.pkl",
         "tooltip": "Select the TTA metadata file (.txt) or the dynamic threshold .pkl file, depending on the chosen Detection_mode.",
     },
+    Output_format={
+        "choices": [
+            "Points",
+            "Bounding boxes",
+            "Bounding boxes with confidence scores",
+        ],
+        "value": "Points",
+        "tooltip": "Select the type of output layer to add to the viewer.",
+    },
     ADVANCED_SETTINGS={},
     Confidence_threshold={
         "tooltip": "Parameter that determines how many detections will model return. Use calibration widgets to determine optimal threshold for your use case."
@@ -359,6 +369,12 @@ def build_threshold_map(
     },
     Points_size={
         "tooltip": "Points size in results Points layer. Can be changed later by pressing Ctrl+A and moving Size slider in the layer itself"
+    },
+    Bbox_thickness={
+        "tooltip": "Thickness of the side of rectangles in Shapes layer if Generate bbox is chosen"
+    },
+    Score_text_size={
+        "tooltip": "Font size of confidence score text if Show confidence parameter is chosen"
     },
     Save_result={
         "tooltip": "If chosen, a folder will be created with .csv or .xlsx file containing quantification of objects for each frame"
@@ -381,6 +397,7 @@ def predict_on_two_stack(
     viewer: napari.Viewer,
     Select_model=first_model,
     Confidence_threshold: float = 0.2,
+    Output_format: str = "Points",
     Detection_mode="Regular detection",
     Mode_file=pathlib.Path(),
     Save_result=True,
@@ -394,6 +411,8 @@ def predict_on_two_stack(
     Sahi_overlap: float = 0.2,
     Intersection_threshold=0.34,
     Points_size=30,
+    Bbox_thickness=5,
+    Score_text_size=3,
 ):
     use_tta = Detection_mode == "Detection with TTA"
     use_dynamic = Detection_mode == "Detection with Dynamic threshold"
@@ -459,6 +478,8 @@ def predict_on_two_stack(
         dim2 = len(pic[0]) if dim1 > 0 else 0
 
         all_aug_points = []
+        all_aug_boxes = []
+        all_aug_scores = []
         all_aug_counts = []
 
         with progress(
@@ -478,6 +499,8 @@ def predict_on_two_stack(
                 )
 
                 aug_points = []
+                aug_boxes = []
+                aug_scores = []
                 aug_counts = (
                     np.zeros((dim1, dim2), dtype=int)
                     if dim1 > 0 and dim2 > 0
@@ -537,23 +560,50 @@ def predict_on_two_stack(
                                 progress_bar=False,
                                 progress_callback=slice_callback,
                             )
-                            result = result.to_coco_predictions()
 
+                            detections = result.object_prediction_list
                             frame_count = 0
-                            for instance in result:
-                                bbox = instance["bbox"]
+                            for det in detections:
+                                x1 = det.bbox.minx
+                                x2 = det.bbox.maxx
+                                y1 = det.bbox.miny
+                                y2 = det.bbox.maxy
+                                conf = det.score.value
+
+                                # Apply scaling
                                 if scale_factor != 1.0:
-                                    center_x = int(
-                                        (bbox[0] + bbox[2] // 2) * scale_factor
-                                    )
-                                    center_y = int(
-                                        (bbox[1] + bbox[3] // 2) * scale_factor
-                                    )
+                                    x1 *= scale_factor
+                                    x2 *= scale_factor
+                                    y1 *= scale_factor
+                                    y2 *= scale_factor
+                                    # recompute width/height for point
+                                    w_orig = x2 - x1
+                                    h_orig = y2 - y1
+                                    center_x = int(x1 + w_orig // 2)
+                                    center_y = int(y1 + h_orig // 2)
                                 else:
-                                    center_x = int(bbox[0] + bbox[2] // 2)
-                                    center_y = int(bbox[1] + bbox[3] // 2)
+                                    center_x = int((x1 + x2) / 2)
+                                    center_y = int((y1 + y2) / 2)
+
                                 aug_points.append([i, j, center_y, center_x])
+
+                                # Box vertices (i, j, y, x)
+                                y1_int = int(y1)
+                                x1_int = int(x1)
+                                y2_int = int(y2)
+                                x2_int = int(x2)
+                                polygon_4d = np.array(
+                                    [
+                                        [i, j, y1_int, x1_int],
+                                        [i, j, y1_int, x2_int],
+                                        [i, j, y2_int, x2_int],
+                                        [i, j, y2_int, x1_int],
+                                    ]
+                                )
+                                aug_boxes.append(polygon_4d)
+                                aug_scores.append(conf)
                                 frame_count += 1
+
                             if aug_counts is not None:
                                 aug_counts[i, j] = frame_count
                             pbar.update(1)
@@ -561,6 +611,8 @@ def predict_on_two_stack(
                 all_aug_points.append(
                     np.array(aug_points) if aug_points else np.empty((0, 4))
                 )
+                all_aug_boxes.append(aug_boxes)
+                all_aug_scores.append(aug_scores)
                 all_aug_counts.append(aug_counts)
                 pbar_augs.update(1)
 
@@ -574,14 +626,48 @@ def predict_on_two_stack(
                 ]
                 avg_counts[f, g] = np.mean(counts) if counts else 0
 
+        # Add layers for each augmentation
         for idx, aug_name in enumerate(best_augs):
             pts = all_aug_points[idx]
-            n_det = len(pts)
-            viewer.add_points(
-                pts,
-                size=Points_size,
-                name=f"{n_det} points ({aug_name}) {name}",
-            )
+            boxes = all_aug_boxes[idx]
+            scores = all_aug_scores[idx]
+
+            if Output_format == "Points":
+                n_det = len(pts)
+                viewer.add_points(
+                    pts,
+                    size=Points_size,
+                    name=f"{n_det} points ({aug_name}) {name}",
+                )
+            elif Output_format in (
+                "Bounding boxes",
+                "Bounding boxes with confidence scores",
+            ):
+                n_det = len(boxes)
+                properties = {"score": scores}
+                text_kw = {}
+                if (
+                    Output_format == "Bounding boxes with confidence scores"
+                    and n_det > 0
+                ):
+                    text_kw = {
+                        "text": {
+                            "string": "{score:.2f}",
+                            "size": Score_text_size,
+                            "color": "red",
+                            "anchor": "upper_left",
+                            "translation": [0, 0, -3, 0],
+                        }
+                    }
+                viewer.add_shapes(
+                    boxes,
+                    face_color="transparent",
+                    edge_color="red",
+                    edge_width=Bbox_thickness,
+                    properties=properties,
+                    name=f"{n_det} bounding boxes ({aug_name}) {name}",
+                    **text_kw,
+                )
 
         if Save_result:
             subfolder = create_unique_subfolder(
@@ -646,6 +732,8 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         initialization_pbar.close()
 
         all_points = []
+        all_boxes = []
+        all_scores = []
         result_table = {
             "Dimension 1 frame": [],
             "Dimension 2 frame": [],
@@ -748,6 +836,9 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
 
                     sigma = win_size / 4.0
                     filtered_points = []
+                    filtered_boxes = []
+                    filtered_scores = []
+
                     for x1, x2, y1, y2, conf in det_list:
                         px = (x1 + x2) / 2
                         py = (y1 + y2) / 2
@@ -776,27 +867,76 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
                             filtered_points.append(
                                 [i, j, int((y1 + y2) / 2), int((x1 + x2) / 2)]
                             )
+                            polygon_4d = np.array(
+                                [
+                                    [i, j, y1, x1],
+                                    [i, j, y1, x2],
+                                    [i, j, y2, x2],
+                                    [i, j, y2, x1],
+                                ]
+                            )
+                            filtered_boxes.append(polygon_4d)
+                            filtered_scores.append(conf)
+
                     dynamic_threshold_pbar.close()
 
                     all_points.extend(filtered_points)
+                    all_boxes.extend(filtered_boxes)
+                    all_scores.extend(filtered_scores)
                     result_table["Dimension 1 frame"].append(i)
                     result_table["Dimension 2 frame"].append(j)
                     result_table["Count"].append(len(filtered_points))
                     total_filtered += len(filtered_points)
                     pbar.update(1)
 
-        if all_points:
-            viewer.add_points(
-                np.array(all_points),
-                size=Points_size,
-                name=f"{total_filtered} points (dynamic) {name}",
-            )
-        else:
-            viewer.add_points(
-                np.empty((0, 4)),
-                size=Points_size,
-                name=f"0 points (dynamic) {name}",
-            )
+        # Add final layer
+        if Output_format == "Points":
+            if all_points:
+                viewer.add_points(
+                    np.array(all_points),
+                    size=Points_size,
+                    name=f"{total_filtered} points (dynamic) {name}",
+                )
+            else:
+                viewer.add_points(
+                    np.empty((0, 4)),
+                    size=Points_size,
+                    name=f"0 points (dynamic) {name}",
+                )
+        elif Output_format in (
+            "Bounding boxes",
+            "Bounding boxes with confidence scores",
+        ):
+            if all_boxes:
+                properties = {"score": all_scores}
+                text_kw = {}
+                if Output_format == "Bounding boxes with confidence scores":
+                    text_kw = {
+                        "text": {
+                            "string": "{score:.2f}",
+                            "size": Score_text_size,
+                            "color": "red",
+                            "anchor": "upper_left",
+                            "translation": [0, 0, -3, 0],
+                        }
+                    }
+                viewer.add_shapes(
+                    all_boxes,
+                    face_color="transparent",
+                    edge_color="red",
+                    edge_width=Bbox_thickness,
+                    properties=properties,
+                    name=f"{total_filtered} bounding boxes (dynamic) {name}",
+                    **text_kw,
+                )
+            else:
+                viewer.add_shapes(
+                    [],
+                    face_color="transparent",
+                    edge_color="red",
+                    edge_width=Bbox_thickness,
+                    name=f"0 bounding boxes (dynamic) {name}",
+                )
 
         if Save_result:
             subfolder = create_unique_subfolder(
@@ -841,14 +981,16 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         viewer.window._status_bar._toggle_activity_dock(False)
         return
 
-    # Regular detection
+    # ========== REGULAR DETECTION (FIXED) ==========
     initialization_pbar = progress(total=0, desc="Initializing model")
     detection_model, model_type = initialize_model(
         rf"{Select_model}", Confidence_threshold, cuda_available
     )
     initialization_pbar.close()
 
-    points = []
+    all_points = []
+    all_boxes = []
+    all_scores = []
     result_table = {
         "Dimension 1 frame": [],
         "Dimension 2 frame": [],
@@ -899,32 +1041,90 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
                     progress_bar=False,
                     progress_callback=slice_callback,
                 )
-                result = result.to_coco_predictions()
 
+                detections = result.object_prediction_list
                 frame_count = 0
-                for instance in result:
-                    bbox = instance["bbox"]
-                    center_x = int(bbox[0] + bbox[2] // 2)
-                    center_y = int(bbox[1] + bbox[3] // 2)
-                    points.append([i, j, center_y, center_x])
+                for det in detections:
+                    x1 = det.bbox.minx
+                    x2 = det.bbox.maxx
+                    y1 = det.bbox.miny
+                    y2 = det.bbox.maxy
+                    conf = det.score.value
+
+                    center_x = int((x1 + x2) / 2)
+                    center_y = int((y1 + y2) / 2)
+                    all_points.append([i, j, center_y, center_x])
+
+                    # Box vertices (i, j, y, x)
+                    y1_int = int(y1)
+                    x1_int = int(x1)
+                    y2_int = int(y2)
+                    x2_int = int(x2)
+                    polygon_4d = np.array(
+                        [
+                            [i, j, y1_int, x1_int],
+                            [i, j, y1_int, x2_int],
+                            [i, j, y2_int, x2_int],
+                            [i, j, y2_int, x1_int],
+                        ]
+                    )
+                    all_boxes.append(polygon_4d)
+                    all_scores.append(conf)
                     frame_count += 1
+
                 result_table["Dimension 1 frame"].append(i)
                 result_table["Dimension 2 frame"].append(j)
                 result_table["Count"].append(frame_count)
                 pbar.update(1)
 
-    if points:
-        viewer.add_points(
-            np.array(points),
-            size=Points_size,
-            name=f"{len(points)} points {name}",
-        )
-    else:
-        viewer.add_points(
-            np.empty((0, 4)),
-            size=Points_size,
-            name=f"0 points {name}",
-        )
+    # Add final layer
+    if Output_format == "Points":
+        if all_points:
+            viewer.add_points(
+                np.array(all_points),
+                size=Points_size,
+                name=f"{len(all_points)} points {name}",
+            )
+        else:
+            viewer.add_points(
+                np.empty((0, 4)),
+                size=Points_size,
+                name=f"0 points {name}",
+            )
+    elif Output_format in (
+        "Bounding boxes",
+        "Bounding boxes with confidence scores",
+    ):
+        if all_boxes:
+            properties = {"score": all_scores}
+            text_kw = {}
+            if Output_format == "Bounding boxes with confidence scores":
+                text_kw = {
+                    "text": {
+                        "string": "{score:.2f}",
+                        "size": Score_text_size,
+                        "color": "red",
+                        "anchor": "upper_left",
+                        "translation": [0, 0, -3, 0],
+                    }
+                }
+            viewer.add_shapes(
+                all_boxes,
+                face_color="transparent",
+                edge_color="red",
+                edge_width=Bbox_thickness,
+                properties=properties,
+                name=f"{len(all_boxes)} bounding boxes {name}",
+                **text_kw,
+            )
+        else:
+            viewer.add_shapes(
+                [],
+                face_color="transparent",
+                edge_color="red",
+                edge_width=Bbox_thickness,
+                name=f"0 bounding boxes {name}",
+            )
 
     viewer.window._status_bar._toggle_activity_dock(False)
 
