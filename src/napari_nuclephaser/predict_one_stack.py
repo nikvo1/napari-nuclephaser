@@ -544,44 +544,48 @@ def predict_on_stack(
                             progress_bar=False,
                             progress_callback=slice_callback,
                         )
-                        result = result.to_coco_predictions()
-
+                        detections = result.object_prediction_list
                         frame_count = 0
-                        for instance in result:
-                            bbox = instance["bbox"]
-                            score = instance["score"]
-                            # Apply scaling
+                        for det in detections:
+                            # Extract bbox and score
+                            x1 = det.bbox.minx
+                            x2 = det.bbox.maxx
+                            y1 = det.bbox.miny
+                            y2 = det.bbox.maxy
+                            conf = det.score.value
+
+                            # Apply scaling (if augmentation resized the image)
                             if scale_factor != 1.0:
-                                x_orig = bbox[0] * scale_factor
-                                y_orig = bbox[1] * scale_factor
-                                w_orig = bbox[2] * scale_factor
-                                h_orig = bbox[3] * scale_factor
+                                x1_scaled = x1 * scale_factor
+                                x2_scaled = x2 * scale_factor
+                                y1_scaled = y1 * scale_factor
+                                y2_scaled = y2 * scale_factor
                             else:
-                                x_orig = bbox[0]
-                                y_orig = bbox[1]
-                                w_orig = bbox[2]
-                                h_orig = bbox[3]
+                                x1_scaled = x1
+                                x2_scaled = x2
+                                y1_scaled = y1
+                                y2_scaled = y2
 
                             # Center point (z, y, x)
-                            center_x = int(x_orig + w_orig // 2)
-                            center_y = int(y_orig + h_orig // 2)
+                            center_x = int((x1_scaled + x2_scaled) / 2)
+                            center_y = int((y1_scaled + y2_scaled) / 2)
                             aug_points.append([i, center_y, center_x])
 
                             # Bounding box vertices (z, y, x)
-                            y1 = int(y_orig)
-                            x1 = int(x_orig)
-                            y2 = int(y_orig + h_orig)
-                            x2 = int(x_orig + w_orig)
+                            y1_int = int(y1_scaled)
+                            x1_int = int(x1_scaled)
+                            y2_int = int(y2_scaled)
+                            x2_int = int(x2_scaled)
                             polygon_3d = np.array(
                                 [
-                                    [i, y1, x1],
-                                    [i, y1, x2],
-                                    [i, y2, x2],
-                                    [i, y2, x1],
+                                    [i, y1_int, x1_int],
+                                    [i, y1_int, x2_int],
+                                    [i, y2_int, x2_int],
+                                    [i, y2_int, x1_int],
                                 ]
                             )
                             aug_boxes.append(polygon_3d)
-                            aug_scores.append(score)
+                            aug_scores.append(conf)
                             frame_count += 1
 
                         frame_counts.append(frame_count)
@@ -998,31 +1002,34 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
                 progress_bar=False,
                 progress_callback=slice_callback,
             )
-            result = result.to_coco_predictions()
-
+            detections = result.object_prediction_list
             frame_count = 0
-            for instance in result:
-                bbox = instance["bbox"]
-                score = instance["score"]
-                # COCO bbox: (x, y, w, h)
-                x = bbox[0]
-                y = bbox[1]
-                w = bbox[2]
-                h = bbox[3]
-                center_x = int(x + w // 2)
-                center_y = int(y + h // 2)
+            for det in detections:
+                x1 = det.bbox.minx
+                x2 = det.bbox.maxx
+                y1 = det.bbox.miny
+                y2 = det.bbox.maxy
+                conf = det.score.value
+
+                center_x = int((x1 + x2) / 2)
+                center_y = int((y1 + y2) / 2)
                 all_points.append([i, center_y, center_x])
 
-                # Box vertices (z, y, x)
-                y1 = int(y)
-                x1 = int(x)
-                y2 = int(y + h)
-                x2 = int(x + w)
+                # Box vertices (i, y, x)
+                y1_int = int(y1)
+                x1_int = int(x1)
+                y2_int = int(y2)
+                x2_int = int(x2)
                 polygon_3d = np.array(
-                    [[i, y1, x1], [i, y1, x2], [i, y2, x2], [i, y2, x1]]
+                    [
+                        [i, y1_int, x1_int],
+                        [i, y1_int, x2_int],
+                        [i, y2_int, x2_int],
+                        [i, y2_int, x1_int],
+                    ]
                 )
                 all_boxes.append(polygon_3d)
-                all_scores.append(score)
+                all_scores.append(conf)
                 frame_count += 1
 
             result_table["Frame"].append(i)

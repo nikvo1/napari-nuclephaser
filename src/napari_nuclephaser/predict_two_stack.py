@@ -560,44 +560,48 @@ def predict_on_two_stack(
                                 progress_bar=False,
                                 progress_callback=slice_callback,
                             )
-                            result = result.to_coco_predictions()
 
+                            detections = result.object_prediction_list
                             frame_count = 0
-                            for instance in result:
-                                bbox = instance["bbox"]
-                                score = instance["score"]
+                            for det in detections:
+                                x1 = det.bbox.minx
+                                x2 = det.bbox.maxx
+                                y1 = det.bbox.miny
+                                y2 = det.bbox.maxy
+                                conf = det.score.value
+
                                 # Apply scaling
                                 if scale_factor != 1.0:
-                                    x_orig = bbox[0] * scale_factor
-                                    y_orig = bbox[1] * scale_factor
-                                    w_orig = bbox[2] * scale_factor
-                                    h_orig = bbox[3] * scale_factor
+                                    x1 *= scale_factor
+                                    x2 *= scale_factor
+                                    y1 *= scale_factor
+                                    y2 *= scale_factor
+                                    # recompute width/height for point
+                                    w_orig = x2 - x1
+                                    h_orig = y2 - y1
+                                    center_x = int(x1 + w_orig // 2)
+                                    center_y = int(y1 + h_orig // 2)
                                 else:
-                                    x_orig = bbox[0]
-                                    y_orig = bbox[1]
-                                    w_orig = bbox[2]
-                                    h_orig = bbox[3]
+                                    center_x = int((x1 + x2) / 2)
+                                    center_y = int((y1 + y2) / 2)
 
-                                # Center point (i, j, y, x)
-                                center_x = int(x_orig + w_orig // 2)
-                                center_y = int(y_orig + h_orig // 2)
                                 aug_points.append([i, j, center_y, center_x])
 
-                                # Bounding box vertices (i, j, y, x)
-                                y1 = int(y_orig)
-                                x1 = int(x_orig)
-                                y2 = int(y_orig + h_orig)
-                                x2 = int(x_orig + w_orig)
+                                # Box vertices (i, j, y, x)
+                                y1_int = int(y1)
+                                x1_int = int(x1)
+                                y2_int = int(y2)
+                                x2_int = int(x2)
                                 polygon_4d = np.array(
                                     [
-                                        [i, j, y1, x1],
-                                        [i, j, y1, x2],
-                                        [i, j, y2, x2],
-                                        [i, j, y2, x1],
+                                        [i, j, y1_int, x1_int],
+                                        [i, j, y1_int, x2_int],
+                                        [i, j, y2_int, x2_int],
+                                        [i, j, y2_int, x1_int],
                                     ]
                                 )
                                 aug_boxes.append(polygon_4d)
-                                aug_scores.append(score)
+                                aug_scores.append(conf)
                                 frame_count += 1
 
                             if aug_counts is not None:
@@ -646,7 +650,6 @@ def predict_on_two_stack(
                     Output_format == "Bounding boxes with confidence scores"
                     and n_det > 0
                 ):
-                    # 4D translation: (i, j, y, x) – offset y by -3 pixels
                     text_kw = {
                         "text": {
                             "string": "{score:.2f}",
@@ -861,11 +864,9 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
                                     min_dist = dist
                                     final_thr = thr
                         if conf >= final_thr:
-                            # point (i, j, y, x)
                             filtered_points.append(
                                 [i, j, int((y1 + y2) / 2), int((x1 + x2) / 2)]
                             )
-                            # box (i, j, y, x)
                             polygon_4d = np.array(
                                 [
                                     [i, j, y1, x1],
@@ -980,7 +981,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         viewer.window._status_bar._toggle_activity_dock(False)
         return
 
-    # Regular detection
+    # ========== REGULAR DETECTION (FIXED) ==========
     initialization_pbar = progress(total=0, desc="Initializing model")
     detection_model, model_type = initialize_model(
         rf"{Select_model}", Confidence_threshold, cuda_available
@@ -1040,36 +1041,35 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
                     progress_bar=False,
                     progress_callback=slice_callback,
                 )
-                result = result.to_coco_predictions()
 
+                detections = result.object_prediction_list
                 frame_count = 0
-                for instance in result:
-                    bbox = instance["bbox"]
-                    score = instance["score"]
-                    # COCO bbox: (x, y, w, h)
-                    x = bbox[0]
-                    y = bbox[1]
-                    w = bbox[2]
-                    h = bbox[3]
-                    center_x = int(x + w // 2)
-                    center_y = int(y + h // 2)
+                for det in detections:
+                    x1 = det.bbox.minx
+                    x2 = det.bbox.maxx
+                    y1 = det.bbox.miny
+                    y2 = det.bbox.maxy
+                    conf = det.score.value
+
+                    center_x = int((x1 + x2) / 2)
+                    center_y = int((y1 + y2) / 2)
                     all_points.append([i, j, center_y, center_x])
 
                     # Box vertices (i, j, y, x)
-                    y1 = int(y)
-                    x1 = int(x)
-                    y2 = int(y + h)
-                    x2 = int(x + w)
+                    y1_int = int(y1)
+                    x1_int = int(x1)
+                    y2_int = int(y2)
+                    x2_int = int(x2)
                     polygon_4d = np.array(
                         [
-                            [i, j, y1, x1],
-                            [i, j, y1, x2],
-                            [i, j, y2, x2],
-                            [i, j, y2, x1],
+                            [i, j, y1_int, x1_int],
+                            [i, j, y1_int, x2_int],
+                            [i, j, y2_int, x2_int],
+                            [i, j, y2_int, x1_int],
                         ]
                     )
                     all_boxes.append(polygon_4d)
-                    all_scores.append(score)
+                    all_scores.append(conf)
                     frame_count += 1
 
                 result_table["Dimension 1 frame"].append(i)
