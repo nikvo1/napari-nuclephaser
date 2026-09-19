@@ -229,15 +229,10 @@ def build_threshold_map(
         win_size = max(h, w)
         stride = win_size
 
-    x_starts = list(range(0, w - win_size + 1, stride))
-    y_starts = list(range(0, h - win_size + 1, stride))
-    if x_starts[-1] + win_size < w:
-        x_starts.append(w - win_size)
-    if y_starts[-1] + win_size < h:
-        y_starts.append(h - win_size)
-
     windows = view_as_windows(tile_gray, (win_size, win_size), step=stride)
     n_y, n_x, win_h, win_w = windows.shape
+    x_starts = [i * stride for i in range(n_x)]
+    y_starts = [i * stride for i in range(n_y)]
 
     windows_flat = windows.reshape(-1, win_h, win_w).astype(np.float64)
 

@@ -718,15 +718,10 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             win_size = max(img_h, img_w)
             stride = win_size
 
-        x_starts = list(range(0, img_w - win_size + 1, stride))
-        y_starts = list(range(0, img_h - win_size + 1, stride))
-        if x_starts[-1] + win_size < img_w:
-            x_starts.append(img_w - win_size)
-        if y_starts[-1] + win_size < img_h:
-            y_starts.append(img_h - win_size)
-
         windows = view_as_windows(gray, (win_size, win_size), step=stride)
         n_y, n_x, win_h, win_w = windows.shape
+        x_starts = [i * stride for i in range(n_x)]
+        y_starts = [i * stride for i in range(n_y)]
 
         windows_flat = windows.reshape(-1, win_h, win_w).astype(np.float64)
 
