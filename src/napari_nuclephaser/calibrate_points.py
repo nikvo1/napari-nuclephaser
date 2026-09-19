@@ -1,4 +1,5 @@
 import itertools
+import json
 import os
 import pathlib
 import warnings
@@ -14,11 +15,15 @@ from magicgui import magic_factory
 from matplotlib import pyplot as plt
 from napari.layers import Image, Points
 from napari.utils import progress
-from napari.utils.notifications import show_error, show_info
+from napari.utils.notifications import show_info
 from sahi.predict import get_sliced_prediction
 from torch import cuda
 
-from napari_nuclephaser.utils import create_unique_subfolder, initialize_model
+from napari_nuclephaser.utils import (
+    create_unique_subfolder,
+    initialize_model,
+    show_modal_error,
+)
 
 warnings.filterwarnings(action="ignore", category=FutureWarning)
 warnings.filterwarnings(action="ignore", category=UserWarning)
@@ -32,6 +37,41 @@ cuda_available = "cuda:0" if cuda.is_available() else "cpu"
 models_folder = pathlib.Path(pathlib.Path(__file__).parent / "models")
 first_model = next((x for x in models_folder.iterdir() if x.is_file()), None)
 model_type_list = ("ultralytics", "yolov5", "yolov8", "yolov11", "yolo11")
+
+CONFIG_PATH = pathlib.Path.home() / ".napari_nuclephaser.json"
+
+
+def _load_last_folder():
+    try:
+        with open(CONFIG_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        path_str = data.get("last_folder", ".")
+        if not isinstance(path_str, str) or not path_str.strip():
+            return pathlib.Path(".")
+        return pathlib.Path(path_str)
+    except (OSError, ValueError, TypeError):
+        return pathlib.Path(".")
+
+
+def _save_last_folder(value):
+    try:
+        data = {}
+        if CONFIG_PATH.is_file():
+            try:
+                with open(CONFIG_PATH, encoding="utf-8") as f:
+                    data = json.load(f)
+                if not isinstance(data, dict):
+                    data = {}
+            except (OSError, ValueError):
+                data = {}
+        data["last_folder"] = str(value)
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except OSError:
+        pass
+
+
+DEFAULT_FOLDER = _load_last_folder()
 
 
 def _ensure_numpy(arr):
@@ -264,7 +304,10 @@ def _test_frame(
         "choices": ["IOS", "IOU"],
         "tooltip": "Metric to decide when two detections overlap (see SAHI docs).",
     },
-    Save_folder={"mode": "d"},
+    Save_folder={
+        "mode": "d",
+        "value": DEFAULT_FOLDER,
+    },
     Sahi_size={
         "max": 100000,
         "tooltip": "Size of sliding window for sliced inference (pixels).",
@@ -290,7 +333,7 @@ def calibrate_with_points(
     Division_size=640,
     Calibration_proportion=0.1,
     Calibrate_with_TTA: bool = False,
-    Save_folder=pathlib.Path(),
+    Save_folder=DEFAULT_FOLDER,
     Experiment_name="Experiment",
     ADVANCED_SETTINGS="",
     Random_seed=42,
@@ -319,7 +362,7 @@ def calibrate_with_points(
     points_data = _ensure_numpy(Select_Points_layer.data)
 
     if len(points_data) == 0:
-        show_error("Points layer is empty! Can't proceed further")
+        show_modal_error("Points layer is empty! Can't proceed further")
         return None
 
     # Determine number of frames
@@ -338,7 +381,7 @@ def calibrate_with_points(
         n_frames = image_data.shape[0]
         images = [image_data[i] for i in range(n_frames)]
     else:
-        show_error(
+        show_modal_error(
             "Unsupported image dimensions. Provide a 2D image, a 3D stack (T, H, W), or (T, H, W, C)."
         )
         return None
@@ -348,7 +391,7 @@ def calibrate_with_points(
         if points_data.shape[1] == 2:
             # Single image points: (N, 2) -> all belong to frame 0
             if n_frames != 1:
-                show_error(
+                show_modal_error(
                     "Points layer has 2 columns (y,x) but image stack has multiple frames. "
                     "Please use a 3D points layer with columns (frame, y, x)."
                 )
@@ -361,12 +404,12 @@ def calibrate_with_points(
                 t, y, x = int(pt[0]), pt[1], pt[2]
                 points_per_frame.setdefault(t, []).append((y, x))
         else:
-            show_error(
+            show_modal_error(
                 f"Points layer has {points_data.shape[1]} columns. Expected 2 (y,x) for a single frame or 3 (frame,y,x) for a stack."
             )
             return None
     else:
-        show_error(
+        show_modal_error(
             f"Points layer must be 2D (N,2) for a single image or 2D (N,3) for a stack. Got ndim={points_data.ndim}."
         )
         return None
@@ -376,8 +419,14 @@ def calibrate_with_points(
             points_per_frame[t] = []
     frames_with_images = [t for t in range(n_frames) if t < len(images)]
     if not frames_with_images:
-        show_error("No valid frames found.")
+        show_modal_error("No valid frames found.")
         return None
+
+    if not Save_folder:
+        show_modal_error("Please select a save folder.")
+        return None
+
+    _save_last_folder(Save_folder)
 
     viewer.window._status_bar._toggle_activity_dock(True)
 
@@ -434,7 +483,7 @@ def calibrate_with_points(
             pbar_outer.update(1)
 
     if not thresholds_per_frame:
-        show_error(
+        show_modal_error(
             "No valid calibration data. Model might not detect anything on your images."
         )
         return None
@@ -681,7 +730,7 @@ Per‑frame MAPE: {per_frame_mape}
             pbar.update(1)
 
     if not all_test_tiles_original:
-        show_error("No test tiles available for TTA. Aborting TTA.")
+        show_modal_error("No test tiles available for TTA. Aborting TTA.")
         return f"Native: threshold={overall_threshold:.3f}, MAPE={overall_mape:.2f}% (TTA skipped)"
 
     for aug_func, aug_name in augmentations:
@@ -719,7 +768,9 @@ Per‑frame MAPE: {per_frame_mape}
         name for name, thr in tta_thresholds.items() if thr is not None
     ]
     if not valid_augs:
-        show_error("No augmentation produced a valid threshold. TTA aborted.")
+        show_modal_error(
+            "No augmentation produced a valid threshold. TTA aborted."
+        )
         return f"Native: threshold={overall_threshold:.3f}, MAPE={overall_mape:.2f}% (TTA failed)"
 
     n_tiles = len(all_test_tiles_original)
