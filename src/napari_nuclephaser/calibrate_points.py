@@ -41,6 +41,22 @@ def _ensure_numpy(arr):
     return arr
 
 
+def _save_points_csv(points_data, csv_path):
+    """Save points in napari-readable CSV format (index, axis-0, ...)."""
+    points_data = np.asarray(points_data)
+    if points_data.ndim != 2:
+        points_data = points_data.reshape(len(points_data), -1)
+
+    n_points = len(points_data)
+    n_dims = points_data.shape[1] if n_points else 0
+
+    data = {"index": np.arange(n_points)}
+    for dim in range(n_dims):
+        data[f"axis-{dim}"] = points_data[:, dim]
+
+    pd.DataFrame(data).to_csv(csv_path, index=False)
+
+
 def _split_image_and_points(
     image: np.ndarray, points: list[tuple[float, float]], window_size: int
 ) -> tuple[list[np.ndarray], list[int]]:
@@ -460,17 +476,8 @@ def calibrate_with_points(
             str(Save_folder), str(Experiment_name)
         )
 
-        if points_data.ndim == 2:
-            if points_data.shape[1] == 2:
-                points_to_save = np.column_stack(
-                    (np.zeros(len(points_data), dtype=int), points_data)
-                )
-            else:
-                points_to_save = points_data
-        else:
-            points_to_save = points_data
-        pd.DataFrame(points_to_save, columns=["frame", "y", "x"]).to_csv(
-            os.path.join(subfolder, "reference_points.csv"), index=False
+        _save_points_csv(
+            points_data, os.path.join(subfolder, "reference_points.csv")
         )
 
         current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -548,17 +555,8 @@ Per‑frame MAPE: No test data
     fig.savefig(plot_path, bbox_inches="tight")
     plt.close(fig)
 
-    if points_data.ndim == 2:
-        if points_data.shape[1] == 2:
-            points_to_save = np.column_stack(
-                (np.zeros(len(points_data), dtype=int), points_data)
-            )
-        else:
-            points_to_save = points_data
-    else:
-        points_to_save = points_data
-    pd.DataFrame(points_to_save, columns=["frame", "y", "x"]).to_csv(
-        os.path.join(subfolder, "reference_points.csv"), index=False
+    _save_points_csv(
+        points_data, os.path.join(subfolder, "reference_points.csv")
     )
 
     current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
