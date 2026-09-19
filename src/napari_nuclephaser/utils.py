@@ -98,3 +98,39 @@ def show_modal_warning(message):
     except (ImportError, AttributeError, RuntimeError):
         show_warning(message)
         return True
+
+
+def show_modal_error(message):
+    """Show a modal error dialog that requires the user to press OK.
+
+    Works across all Qt backends supported by napari (PyQt5, PySide2,
+    PyQt6, PySide6) via qtpy. Falls back to napari's passive
+    show_error if Qt is unavailable or the dialog fails.
+    """
+    try:
+        from qtpy.QtWidgets import QMessageBox
+
+        msg = QMessageBox()
+        msg.setWindowTitle("Error")
+        msg.setText(message)
+
+        icon_enum = getattr(QMessageBox, "Icon", None)
+        button_enum = getattr(QMessageBox, "StandardButton", None)
+
+        if icon_enum is not None:
+            msg.setIcon(icon_enum.Critical)
+        else:
+            msg.setIcon(QMessageBox.Critical)
+
+        if button_enum is not None:
+            msg.setStandardButtons(button_enum.Ok)
+        else:
+            msg.setStandardButtons(QMessageBox.Ok)
+
+        msg.exec_()
+        return True
+    except (ImportError, AttributeError, RuntimeError):
+        from napari.utils.notifications import show_error
+
+        show_error(message)
+        return True

@@ -39,6 +39,9 @@ contributions:
     - id: napari-nuclephaser.create_density_maps
       title: Create density maps from points or shapes layer
       python_name: napari_nuclephaser.create_density_maps:generate_density_maps
+    - id: napari-nuclephaser.compile_density_maps
+      title: Compile density maps into single image
+      python_name: napari_nuclephaser.compile_density_maps:compile_density_maps
   widgets:
     - command: napari-nuclephaser.make_points
       display_name: Predict on single image
@@ -60,3 +63,5 @@ contributions:
       display_name: Count points or boxes
     - command: napari-nuclephaser.create_density_maps
       display_name: Create density maps
+    - command: napari-nuclephaser.compile_density_maps
+      display_name: Compile density maps
