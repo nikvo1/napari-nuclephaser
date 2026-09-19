@@ -45,6 +45,22 @@ def _ensure_numpy(arr):
     return arr
 
 
+def _save_points_csv(points_data, csv_path):
+    """Save points in napari-readable CSV format (index, axis-0, ...)."""
+    points_data = np.asarray(points_data)
+    if points_data.ndim != 2:
+        points_data = points_data.reshape(len(points_data), -1)
+
+    n_points = len(points_data)
+    n_dims = points_data.shape[1] if n_points else 0
+
+    data = {"index": np.arange(n_points)}
+    for dim in range(n_dims):
+        data[f"axis-{dim}"] = points_data[:, dim]
+
+    pd.DataFrame(data).to_csv(csv_path, index=False)
+
+
 def _split_image_and_points(
     image: np.ndarray, points: list[tuple[float, float]], window_size: int
 ) -> tuple[list[np.ndarray], list[int]]:
@@ -907,14 +923,11 @@ def calibrate_with_dynamic_threshold(
             f,
         )
 
-    points_to_save = []
-    for frame, pts in points_per_frame.items():
-        for y, x in pts:
-            points_to_save.append([frame, y, x])
-    if points_to_save:
-        pd.DataFrame(points_to_save, columns=["frame", "y", "x"]).to_csv(
-            os.path.join(dynamic_folder, "reference_points.csv"), index=False
-        )
+    # Save reference points in napari-readable CSV format
+    _save_points_csv(
+        points_data,
+        os.path.join(dynamic_folder, "reference_points.csv"),
+    )
 
     comparison_summary = ""
     for sigma in sigmas:
