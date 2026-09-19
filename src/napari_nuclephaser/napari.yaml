@@ -54,4 +54,4 @@ contributions:
     - command: napari-nuclephaser.convert_points_to_labels
       display_name: Convert points to labels
     - command: napari-nuclephaser.count_points
-      display_name: Count points on images
+      display_name: Count points or boxes
