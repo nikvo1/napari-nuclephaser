@@ -1,3 +1,4 @@
+import json
 import os
 import pathlib
 import pickle
@@ -12,7 +13,7 @@ import pandas as pd
 from magicgui import magic_factory
 from napari.layers import Image
 from napari.utils import progress
-from napari.utils.notifications import show_error, show_info
+from napari.utils.notifications import show_info
 from sahi.predict import get_sliced_prediction
 from torch import cuda
 
@@ -21,7 +22,11 @@ try:
 except ImportError:
     from numpy.lib.stride_tricks import sliding_window_view as view_as_windows
 
-from napari_nuclephaser.utils import create_unique_subfolder, initialize_model
+from napari_nuclephaser.utils import (
+    create_unique_subfolder,
+    initialize_model,
+    show_modal_error,
+)
 
 warnings.filterwarnings(action="ignore", category=FutureWarning)
 warnings.filterwarnings(action="ignore", category=UserWarning)
@@ -30,6 +35,41 @@ cuda_available = "cuda:0" if cuda.is_available() else "cpu"
 
 models_folder = pathlib.Path(pathlib.Path(__file__).parent / "models")
 first_model = next((x for x in models_folder.iterdir() if x.is_file()), None)
+
+CONFIG_PATH = pathlib.Path.home() / ".napari_nuclephaser.json"
+
+
+def _load_last_folder():
+    try:
+        with open(CONFIG_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        path_str = data.get("last_folder", ".")
+        if not isinstance(path_str, str) or not path_str.strip():
+            return pathlib.Path(".")
+        return pathlib.Path(path_str)
+    except (OSError, ValueError, TypeError):
+        return pathlib.Path(".")
+
+
+def _save_last_folder(value):
+    try:
+        data = {}
+        if CONFIG_PATH.is_file():
+            try:
+                with open(CONFIG_PATH, encoding="utf-8") as f:
+                    data = json.load(f)
+                if not isinstance(data, dict):
+                    data = {}
+            except (OSError, ValueError):
+                data = {}
+        data["last_folder"] = str(value)
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except OSError:
+        pass
+
+
+DEFAULT_FOLDER = _load_last_folder()
 
 
 def _save_points_csv(points_data, csv_path):
@@ -323,7 +363,10 @@ def _parse_metadata(metadata_path):
     Experiment_name={
         "tooltip": "Name of the subfolder that will be created for the results (TTA Detection_mode only)."
     },
-    Save_folder={"mode": "d"},
+    Save_folder={
+        "mode": "d",
+        "value": DEFAULT_FOLDER,
+    },
     call_button="Predict",
     auto_call=False,
     result_widget=False,
@@ -337,7 +380,7 @@ def make_points(
     Detection_mode="Regular detection",
     Mode_file=pathlib.Path(),
     Save_result=False,
-    Save_folder=pathlib.Path(),
+    Save_folder=DEFAULT_FOLDER,
     Experiment_name="Experiment",
     Save_format="CSV",
     ADVANCED_SETTINGS="",
@@ -355,18 +398,18 @@ def make_points(
 
     if Detection_mode != "Regular detection":
         if not Mode_file or not Mode_file.exists():
-            show_error(
+            show_modal_error(
                 f"Detection mode '{Detection_mode}' requires a valid mode file. See docs for more details."
             )
             return None
 
         if use_tta and Mode_file.suffix.lower() != ".txt":
-            show_error(
+            show_modal_error(
                 "TTA detection mode requires a .txt metadata file. See docs for more details."
             )
             return None
         if use_dynamic and Mode_file.suffix.lower() != ".pkl":
-            show_error(
+            show_modal_error(
                 "Dynamic threshold detection mode requires a .pkl file. See docs for more details."
             )
             return None
@@ -377,7 +420,7 @@ def make_points(
     if len(pic.shape) > 3 or (
         len(pic.shape) == 3 and pic.shape[-1] not in (1, 3, 4)
     ):
-        show_error(
+        show_modal_error(
             "Image is not a single frame! Use different widget for processing stacks of images"
         )
         return None
@@ -385,6 +428,12 @@ def make_points(
     if pic.dtype == np.uint16:
         pic = cv2.convertScaleAbs(pic, alpha=255 / 65535)
         pic = pic.astype(np.uint8)
+
+    if Save_result:
+        if not Save_folder:
+            show_modal_error("Please select a save folder.")
+            return None
+        _save_last_folder(Save_folder)
 
     viewer.window._status_bar._toggle_activity_dock(True)
 
@@ -395,7 +444,7 @@ def make_points(
                 str(Mode_file)
             )
         except (ValueError, OSError, KeyError) as e:
-            show_error(f"Failed to parse metadata file: {e}")
+            show_modal_error(f"Failed to parse metadata file: {e}")
             viewer.window._status_bar._toggle_activity_dock(False)
             return None
 
@@ -418,7 +467,7 @@ def make_points(
         ) as pbar_augs:
             for aug_name in best_augs:
                 if aug_name not in AUGMENTATION_MAP:
-                    show_error(
+                    show_modal_error(
                         f"Unknown augmentation '{aug_name}' in metadata. Skipping this augmentation."
                     )
                     pbar_augs.update(1)
