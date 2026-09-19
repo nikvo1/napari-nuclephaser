@@ -7,9 +7,9 @@ from datetime import datetime
 import numpy as np
 from magicgui import magic_factory
 from napari.layers import Image, Layer, Points, Shapes
-from napari.utils.notifications import show_error, show_info
+from napari.utils.notifications import show_info
 
-from napari_nuclephaser.utils import show_modal_warning
+from napari_nuclephaser.utils import show_modal_error, show_modal_warning
 
 CONFIG_PATH = pathlib.Path.home() / ".napari_nuclephaser.json"
 
@@ -165,7 +165,6 @@ def _append_metadata(save_folder, label, lines):
 
 
 def _read_calibration(folder):
-    """Return (pixel_um, image_h, image_w). Any value may be None."""
     path = os.path.join(str(folder), "calibration.txt")
     if not os.path.isfile(path):
         return None, None, None
@@ -247,29 +246,29 @@ def generate_density_maps(
     Subfolder_name: str = "DensityMaps",
 ) -> str:
     if not isinstance(Input_layer, Points | Shapes):
-        show_error(
+        show_modal_error(
             f"Input layer must be a Points or Shapes layer, got "
             f"{type(Input_layer).__name__}."
         )
         return "Invalid input layer."
 
     if not isinstance(Reference_image, Image):
-        show_error(
+        show_modal_error(
             f"Reference image must be an Image layer, got "
             f"{type(Reference_image).__name__}."
         )
         return "Invalid reference image."
 
     if not Save_folder:
-        show_error("Please select a parent folder.")
+        show_modal_error("Please select a parent folder.")
         return "No parent folder selected."
 
     if not Subfolder_name or not str(Subfolder_name).strip():
-        show_error("Please provide a subfolder name.")
+        show_modal_error("Please provide a subfolder name.")
         return "No subfolder name provided."
 
     if Density_size < 1:
-        show_error("Density_size must be >= 1.")
+        show_modal_error("Density_size must be >= 1.")
         return "Invalid Density_size."
 
     try:
@@ -277,19 +276,19 @@ def generate_density_maps(
             Reference_image.data.shape
         )
     except ValueError as e:
-        show_error(str(e))
+        show_modal_error(str(e))
         return "Invalid reference image shape."
 
     is_two_stack = len(frame_shape) == 2
 
     if not is_two_stack and not (1 <= Index <= 99):
-        show_error("Index must be in [1, 99].")
+        show_modal_error("Index must be in [1, 99].")
         return "Invalid index."
 
     subfolder = os.path.join(str(Save_folder), str(Subfolder_name))
 
     if is_two_stack and _folder_has_density_maps(subfolder):
-        show_error(
+        show_modal_error(
             "Given folder already contains density maps, can't process "
             "2-dimensional stack"
         )
@@ -300,7 +299,7 @@ def generate_density_maps(
 
     if existing_pixel is None:
         if field_calibration <= 0:
-            show_error("Please, provide pixel calibration")
+            show_modal_error("Please, provide pixel calibration")
             return "No pixel calibration provided."
         final_calibration = field_calibration
         calibration_action = "created"
@@ -353,7 +352,7 @@ def generate_density_maps(
             if len(frame_shape) == 0
             else f"{len(frame_shape)}-stack"
         )
-        show_error(
+        show_modal_error(
             f"Input layer has {ndim}D coordinates, but the reference "
             f"image is a {kind} (expects {expected_ndim}D coordinates)."
         )
@@ -417,7 +416,7 @@ def generate_density_maps(
         try:
             final_index = _find_next_index(subfolder, Index)
         except RuntimeError as e:
-            show_error(str(e))
+            show_modal_error(str(e))
             return "No free index available."
 
         if final_index != Index:
@@ -472,7 +471,10 @@ def generate_density_maps(
             f"Wrote {len(maps)} map(s) of shape ({map_h}, {map_w}) to "
             f"{subfolder}."
         )
-    summary += f" Pixel calibration: {final_calibration:.6g} µm/px ({calibration_action})."
+    summary += (
+        f" Pixel calibration: {final_calibration:.6g} µm/px "
+        f"({calibration_action})."
+    )
     if n_dropped_oob or n_dropped_oof:
         summary += (
             f" Dropped {n_dropped_oob} out-of-bounds and "
