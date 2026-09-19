@@ -44,6 +44,36 @@ def _save_last_calibration(value):
         pass
 
 
+def _load_last_folder():
+    try:
+        with open(CONFIG_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        path_str = data.get("last_folder", ".")
+        if not isinstance(path_str, str) or not path_str.strip():
+            return pathlib.Path(".")
+        return pathlib.Path(path_str)
+    except (OSError, ValueError, TypeError):
+        return pathlib.Path(".")
+
+
+def _save_last_folder(value):
+    try:
+        data = {}
+        if CONFIG_PATH.is_file():
+            try:
+                with open(CONFIG_PATH, encoding="utf-8") as f:
+                    data = json.load(f)
+                if not isinstance(data, dict):
+                    data = {}
+            except (OSError, ValueError):
+                data = {}
+        data["last_folder"] = str(value)
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except OSError:
+        pass
+
+
 def _extract_frame_and_spatial_shape(image_shape):
     shape = tuple(image_shape)
     if len(shape) >= 3 and shape[-1] in (1, 3, 4):
@@ -211,6 +241,7 @@ def _write_calibration(folder, pixel_um, image_h, image_w):
 
 
 DEFAULT_CALIBRATION = _load_last_calibration()
+DEFAULT_FOLDER = _load_last_folder()
 
 
 @magic_factory(
@@ -233,7 +264,11 @@ DEFAULT_CALIBRATION = _load_last_calibration()
         "value": DEFAULT_CALIBRATION,
     },
     Index={"label": "Index (1-99)", "min": 1, "max": 99, "value": 1},
-    Save_folder={"mode": "d", "label": "Parent folder"},
+    Save_folder={
+        "mode": "d",
+        "label": "Parent folder",
+        "value": DEFAULT_FOLDER,
+    },
     Subfolder_name={"label": "Subfolder name"},
 )
 def generate_density_maps(
@@ -242,7 +277,7 @@ def generate_density_maps(
     Density_size: int = 50,
     Pixel_calibration: float = DEFAULT_CALIBRATION,
     Index: int = 1,
-    Save_folder: pathlib.Path = pathlib.Path(),
+    Save_folder: pathlib.Path = DEFAULT_FOLDER,
     Subfolder_name: str = "DensityMaps",
 ) -> str:
     if not isinstance(Input_layer, Points | Shapes):
@@ -262,6 +297,8 @@ def generate_density_maps(
     if not Save_folder:
         show_modal_error("Please select a parent folder.")
         return "No parent folder selected."
+
+    _save_last_folder(Save_folder)
 
     if not Subfolder_name or not str(Subfolder_name).strip():
         show_modal_error("Please provide a subfolder name.")

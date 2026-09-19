@@ -1,3 +1,4 @@
+import json
 import math
 import os
 import pathlib
@@ -15,9 +16,41 @@ import tifffile
 from magicgui import magic_factory
 from matplotlib.font_manager import FontProperties
 from matplotlib.textpath import TextPath
-from napari.utils.notifications import show_error, show_info
+from napari.utils.notifications import show_info
 
 from napari_nuclephaser.utils import show_modal_error
+
+CONFIG_PATH = pathlib.Path.home() / ".napari_nuclephaser.json"
+
+
+def _load_last_folder():
+    try:
+        with open(CONFIG_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        path_str = data.get("last_folder", ".")
+        if not isinstance(path_str, str) or not path_str.strip():
+            return pathlib.Path(".")
+        return pathlib.Path(path_str)
+    except (OSError, ValueError, TypeError):
+        return pathlib.Path(".")
+
+
+def _save_last_folder(value):
+    try:
+        data = {}
+        if CONFIG_PATH.is_file():
+            try:
+                with open(CONFIG_PATH, encoding="utf-8") as f:
+                    data = json.load(f)
+                if not isinstance(data, dict):
+                    data = {}
+            except (OSError, ValueError):
+                data = {}
+        data["last_folder"] = str(value)
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except OSError:
+        pass
 
 
 def _parse_filename(filename):
@@ -349,12 +382,23 @@ def _render_scale(
         plt.close(fig)
 
 
+DEFAULT_FOLDER = _load_last_folder()
+
+
 @magic_factory(
     auto_call=False,
     call_button="Compile density maps",
     result_widget=True,
-    Source_folder={"mode": "d", "label": "Source folder (.npy maps)"},
-    Save_folder={"mode": "d", "label": "Output parent folder"},
+    Source_folder={
+        "mode": "d",
+        "label": "Source folder (.npy maps)",
+        "value": DEFAULT_FOLDER,
+    },
+    Save_folder={
+        "mode": "d",
+        "label": "Output parent folder",
+        "value": DEFAULT_FOLDER,
+    },
     Subfolder_name={"label": "Output subfolder name"},
     Create_individual_maps={
         "label": "Create individual maps",
@@ -381,8 +425,8 @@ def _render_scale(
     },
 )
 def compile_density_maps(
-    Source_folder: pathlib.Path,
-    Save_folder: pathlib.Path = pathlib.Path(),
+    Source_folder: pathlib.Path = DEFAULT_FOLDER,
+    Save_folder: pathlib.Path = DEFAULT_FOLDER,
     Subfolder_name: str = "CompiledDensityMaps",
     Create_individual_maps: bool = False,
     Combine_maps_into_grid: bool = True,
@@ -391,15 +435,19 @@ def compile_density_maps(
     Another_colormap: str = "",
 ) -> str:
     if not Source_folder or not os.path.isdir(str(Source_folder)):
-        show_error("Source folder does not exist.")
+        show_modal_error("Source folder does not exist.")
         return "Invalid source folder."
 
+    _save_last_folder(Source_folder)
+
     if not Save_folder:
-        show_error("Please select an output parent folder.")
-        return "No output folder selected."
+        show_modal_error("Please select an output parent folder.")
+        return "No output parent folder selected."
+
+    _save_last_folder(Save_folder)
 
     if not Subfolder_name or not str(Subfolder_name).strip():
-        show_error("Please provide an output subfolder name.")
+        show_modal_error("Please provide an output subfolder name.")
         return "No subfolder name provided."
 
     if not Create_individual_maps and not Combine_maps_into_grid:
@@ -413,7 +461,7 @@ def compile_density_maps(
         f for f in os.listdir(str(Source_folder)) if f.endswith(".npy")
     )
     if not npy_files:
-        show_error("No density maps found in given folder")
+        show_modal_error("No density maps found in given folder")
         return "No density maps found in given folder"
 
     parsed = {}
@@ -423,27 +471,29 @@ def compile_density_maps(
             parsed[f] = key
 
     if not parsed:
-        show_error("No valid density maps found in given folder")
+        show_modal_error("No valid density maps found in given folder")
         return "No valid density maps."
 
     lengths = {len(k) for k in parsed.values()}
     if len(lengths) != 1:
-        show_error(
+        show_modal_error(
             f"Mixed density map dimensionality in folder: {sorted(lengths)}"
         )
         return "Mixed dimensions."
 
     n_comp = lengths.pop()
     if n_comp not in (1, 2):
-        show_error(f"Unexpected filename structure ({n_comp} components).")
+        show_modal_error(
+            f"Unexpected filename structure ({n_comp} components)."
+        )
         return "Invalid filenames."
 
     pixel_um, img_h, img_w = _read_calibration(str(Source_folder))
     if pixel_um is None:
-        show_error("No pixel calibration found in source folder.")
+        show_modal_error("No pixel calibration found in source folder.")
         return "Missing pixel calibration."
     if img_h is None or img_w is None:
-        show_error("No image size found in source calibration file.")
+        show_modal_error("No image size found in source calibration file.")
         return "Missing image size."
 
     maps_raw = {}
@@ -451,7 +501,7 @@ def compile_density_maps(
     for f, _ in parsed.items():
         arr = np.load(os.path.join(str(Source_folder), f))
         if arr.ndim != 2:
-            show_error(f"Unexpected array shape in {f}: {arr.shape}")
+            show_modal_error(f"Unexpected array shape in {f}: {arr.shape}")
             return "Invalid array shape."
         maps_raw[f] = arr
         shapes_seen.setdefault(arr.shape, []).append(f)
@@ -461,7 +511,7 @@ def compile_density_maps(
             f"{shape}: {', '.join(files[:3])}"
             for shape, files in shapes_seen.items()
         )
-        show_error(f"Density maps have non-uniform shapes: {details}")
+        show_modal_error(f"Density maps have non-uniform shapes: {details}")
         return "Non-uniform density map shapes."
 
     map_h, map_w = next(iter(shapes_seen.keys()))
@@ -499,7 +549,6 @@ def compile_density_maps(
     out_folder = _resolve_output_folder(str(Save_folder), str(Subfolder_name))
     os.makedirs(out_folder, exist_ok=True)
 
-    # -------- Individual maps --------
     if Create_individual_maps:
         individual_folder = os.path.join(out_folder, "Individual_maps")
         os.makedirs(individual_folder, exist_ok=True)
@@ -507,7 +556,6 @@ def compile_density_maps(
             out_name = fname[:-4] + ".tiff"
             tifffile.imwrite(os.path.join(individual_folder, out_name), rgb)
 
-    # -------- Grid --------
     grid_h_shape = None
     grid_v_shape = None
     if Combine_maps_into_grid:
@@ -559,7 +607,6 @@ def compile_density_maps(
         grid_h_shape = grid_h_img.shape[:2]
         grid_v_shape = grid_v_img.shape[:2]
 
-    # -------- Scales --------
     cell_h_px = img_h / map_h
     cell_w_px = img_w / map_w
     cell_h_mm = cell_h_px * pixel_um / 1000.0
@@ -602,7 +649,6 @@ def compile_density_maps(
         os.path.join(out_folder, "scale_horizontal_bottom.png"),
     )
 
-    # -------- Metadata --------
     current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     individual_str = "yes" if Create_individual_maps else "no"
     grid_str = "yes" if Combine_maps_into_grid else "no"
