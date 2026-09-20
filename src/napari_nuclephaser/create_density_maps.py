@@ -22,7 +22,7 @@ def _load_last_calibration():
         if value <= 0:
             return 0.0
         return value
-    except (OSError, ValueError, TypeError):
+    except (OSError, ValueError, TypeError, AttributeError):
         return 0.0
 
 
@@ -52,7 +52,7 @@ def _load_last_folder():
         if not isinstance(path_str, str) or not path_str.strip():
             return pathlib.Path(".")
         return pathlib.Path(path_str)
-    except (OSError, ValueError, TypeError):
+    except (OSError, ValueError, TypeError, AttributeError):
         return pathlib.Path(".")
 
 
