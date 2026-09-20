@@ -473,24 +473,16 @@ def generate_density_maps(
 
     _save_last_calibration(final_calibration)
 
-    cell_h = H / map_h
-    cell_w = W / map_w
-
     metadata_lines = [
         f"Source layer: {Input_layer.name} ({type(Input_layer).__name__})",
         f"Reference image: {Reference_image.name}",
         f"Image size (h x w): {H} x {W}",
         f"Requested Density_size: {Density_size}",
         f"Actual map shape (h, w): ({map_h}, {map_w})",
-        f"Cell size along H (px): {cell_h:.4f}",
-        f"Cell size along W (px): {cell_w:.4f}",
         f"Pixel calibration (µm/px): {final_calibration:.6g}",
         f"Calibration action: {calibration_action}",
         f"Requested index: {Index}",
         f"Used index: {final_index if final_index is not None else 'N/A'}",
-        f"Total objects in layer: {n_total}",
-        f"Objects dropped (out of spatial bounds): {n_dropped_oob}",
-        f"Objects dropped (frame not in reference stack): {n_dropped_oof}",
         f"Number of density maps written: {len(maps)}",
     ]
     if index_note is not None:

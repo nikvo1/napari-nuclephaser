@@ -668,8 +668,6 @@ Grid (vertical) shape: {grid_v_str}
 Max raw count: {max_val}
 Pixel calibration (µm/px): {pixel_um}
 Image size (h x w): {img_h} x {img_w}
-Cell size (h x w, px): {cell_h_px:.4f} x {cell_w_px:.4f}
-Cell area (mm^2): {cell_area_mm2:.6g}
 Max density (nuclei/mm²): {_fmt_density(max_density)}
 Colormap: {cmap_name}
 """
