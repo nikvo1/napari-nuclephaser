@@ -332,6 +332,32 @@ def generate_density_maps(
         show_modal_error("Index must be in [1, 99].")
         return "Invalid index."
 
+    data = Input_layer.data
+    is_shapes = isinstance(Input_layer, Shapes)
+    has_objects = data is not None and len(data) > 0
+
+    if has_objects:
+        if is_shapes:
+            first = np.asarray(data[0])
+            ndim = first.shape[1] if first.ndim == 2 else first.shape[0]
+        else:
+            ndim = np.asarray(data).shape[1]
+    else:
+        ndim = None
+
+    expected_ndim = 2 + len(frame_shape)
+    if ndim is not None and ndim != expected_ndim:
+        kind = (
+            "single 2D image"
+            if len(frame_shape) == 0
+            else f"{len(frame_shape)}-stack"
+        )
+        show_modal_error(
+            f"Input layer has {ndim}D coordinates, but the reference "
+            f"image is a {kind} (expects {expected_ndim}D coordinates)."
+        )
+        return "Mismatched dimensionality."
+
     subfolder = os.path.join(str(Save_folder), str(Subfolder_name))
 
     if is_two_stack and _folder_has_density_maps(subfolder):
@@ -378,32 +404,6 @@ def generate_density_maps(
             f"Warning! Image size changed from "
             f"{existing_h}x{existing_w} to {H}x{W}"
         )
-
-    data = Input_layer.data
-    is_shapes = isinstance(Input_layer, Shapes)
-    has_objects = data is not None and len(data) > 0
-
-    if has_objects:
-        if is_shapes:
-            first = np.asarray(data[0])
-            ndim = first.shape[1] if first.ndim == 2 else first.shape[0]
-        else:
-            ndim = np.asarray(data).shape[1]
-    else:
-        ndim = None
-
-    expected_ndim = 2 + len(frame_shape)
-    if ndim is not None and ndim != expected_ndim:
-        kind = (
-            "single 2D image"
-            if len(frame_shape) == 0
-            else f"{len(frame_shape)}-stack"
-        )
-        show_modal_error(
-            f"Input layer has {ndim}D coordinates, but the reference "
-            f"image is a {kind} (expects {expected_ndim}D coordinates)."
-        )
-        return "Mismatched dimensionality."
 
     map_h, map_w = _compute_map_shape(H, W, Density_size)
 
