@@ -1,6 +1,6 @@
 import matplotlib
 
-matplotlib.use("Agg")  # Set backend before other imports
+matplotlib.use("Agg")
 
 from unittest.mock import MagicMock, patch
 
@@ -18,12 +18,8 @@ from napari_nuclephaser.calibrate_points import (
 from napari_nuclephaser.utils import initialize_model
 
 
-# ----------------------------------------------------------------------
-# Fixtures for real model initialization (once per test session)
-# ----------------------------------------------------------------------
 @pytest.fixture(scope="module")
 def real_yolov5_model():
-    """Load real YOLOv5 model from package models folder."""
     from napari_nuclephaser.calibrate_points import (
         cuda_available,
         models_folder,
@@ -38,7 +34,6 @@ def real_yolov5_model():
 
 @pytest.fixture(scope="module")
 def real_yolov11_model():
-    """Load real YOLOv11 model from package models folder."""
     from napari_nuclephaser.calibrate_points import (
         cuda_available,
         models_folder,
@@ -51,11 +46,7 @@ def real_yolov11_model():
     return model, model_type
 
 
-# ----------------------------------------------------------------------
-# Helper: mock get_sliced_prediction to return controlled detection scores
-# ----------------------------------------------------------------------
 def mock_prediction_with_confidences(confidences):
-    """Return a MagicMock that behaves like SAHI result with given confidence scores."""
     mock_result = MagicMock()
     mock_result.object_prediction_list = []
     for conf in confidences:
@@ -65,12 +56,8 @@ def mock_prediction_with_confidences(confidences):
     return mock_result
 
 
-# ----------------------------------------------------------------------
-# Fixture to mock subfolder creation (avoids timestamp issues)
-# ----------------------------------------------------------------------
 @pytest.fixture
 def mock_subfolder(tmp_path):
-    """Mock create_unique_subfolder to return a fixed path inside tmp_path."""
     fake_subfolder = tmp_path / "test_output"
     fake_subfolder.mkdir()
     with patch(
@@ -80,9 +67,14 @@ def mock_subfolder(tmp_path):
         yield fake_subfolder, mock
 
 
-# ----------------------------------------------------------------------
-# Tests for _ensure_numpy (Dask conversion)
-# ----------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def isolate_config(tmp_path, monkeypatch):
+    """Redirect the folder-persistence config to a per-test temp file."""
+    import napari_nuclephaser.calibrate_points as cp_module
+
+    monkeypatch.setattr(cp_module, "CONFIG_PATH", tmp_path / "config.json")
+
+
 def test_ensure_numpy_with_dask():
     dask_arr = da.from_array(np.random.rand(10, 10), chunks=(5, 5))
     result = _ensure_numpy(dask_arr)
@@ -96,9 +88,6 @@ def test_ensure_numpy_with_numpy():
     assert result is numpy_arr
 
 
-# ----------------------------------------------------------------------
-# Tests for tile splitting
-# ----------------------------------------------------------------------
 def test_split_image_and_points():
     image = np.random.randint(0, 255, (400, 400, 3), dtype=np.uint8)
     points = [(50, 50), (150, 150), (250, 250), (350, 350)]
@@ -119,9 +108,6 @@ def test_split_image_and_points_empty():
     assert all(c == 0 for c in counts)
 
 
-# ----------------------------------------------------------------------
-# Tests for _prepare_frame
-# ----------------------------------------------------------------------
 def test_prepare_frame():
     image = np.random.randint(0, 255, (200, 200, 3), dtype=np.uint8)
     points = [(10, 10), (110, 110)]
@@ -148,9 +134,6 @@ def test_prepare_frame_grayscale_conversion():
         assert tile.dtype == np.uint8
 
 
-# ----------------------------------------------------------------------
-# Error handling tests
-# ----------------------------------------------------------------------
 def test_calibrate_error_3d_image_with_2d_points(make_napari_viewer):
     viewer = make_napari_viewer()
     image_3d = np.random.randint(0, 255, (5, 100, 100), dtype=np.uint8)
@@ -158,7 +141,9 @@ def test_calibrate_error_3d_image_with_2d_points(make_napari_viewer):
     viewer.add_image(image_3d, name="stack")
     viewer.add_points(points_2d, name="points")
     widget = calibrate_with_points()
-    with patch("napari_nuclephaser.calibrate_points.show_error") as mock_error:
+    with patch(
+        "napari_nuclephaser.calibrate_points.show_modal_error"
+    ) as mock_error:
         result = widget(
             viewer.layers["stack"], viewer.layers["points"], viewer=viewer
         )
@@ -177,7 +162,9 @@ def test_calibrate_error_points_wrong_columns(make_napari_viewer):
     viewer.add_image(image_2d, name="phase")
     viewer.add_points(points_bad, name="points")
     widget = calibrate_with_points()
-    with patch("napari_nuclephaser.calibrate_points.show_error") as mock_error:
+    with patch(
+        "napari_nuclephaser.calibrate_points.show_modal_error"
+    ) as mock_error:
         result = widget(
             viewer.layers["phase"], viewer.layers["points"], viewer=viewer
         )
@@ -187,14 +174,15 @@ def test_calibrate_error_points_wrong_columns(make_napari_viewer):
 
 
 def test_calibrate_error_empty_points(make_napari_viewer):
-    """Empty points layer should trigger early error."""
     viewer = make_napari_viewer()
     image_2d = np.random.randint(0, 255, (100, 100), dtype=np.uint8)
     points_empty = np.array([])
     viewer.add_image(image_2d, name="phase")
     viewer.add_points(points_empty, name="points")
     widget = calibrate_with_points()
-    with patch("napari_nuclephaser.calibrate_points.show_error") as mock_error:
+    with patch(
+        "napari_nuclephaser.calibrate_points.show_modal_error"
+    ) as mock_error:
         result = widget(
             viewer.layers["phase"], viewer.layers["points"], viewer=viewer
         )
@@ -211,7 +199,9 @@ def test_calibrate_error_unsupported_image_ndim(make_napari_viewer):
     viewer.add_image(image_4d, name="bad")
     viewer.add_points(points, name="points")
     widget = calibrate_with_points()
-    with patch("napari_nuclephaser.calibrate_points.show_error") as mock_error:
+    with patch(
+        "napari_nuclephaser.calibrate_points.show_modal_error"
+    ) as mock_error:
         result = widget(
             viewer.layers["bad"], viewer.layers["points"], viewer=viewer
         )
@@ -220,13 +210,9 @@ def test_calibrate_error_unsupported_image_ndim(make_napari_viewer):
         assert result is None
 
 
-# ----------------------------------------------------------------------
-# Successful calibration tests (real model, mocked predictions)
-# ----------------------------------------------------------------------
 def test_calibrate_success_with_real_model_and_mocked_predictions(
     make_napari_viewer, real_yolov11_model, tmp_path, mock_subfolder
 ):
-    """Test full calibration pipeline with real model but controlled predictions."""
     fake_subfolder, _ = mock_subfolder
     viewer = make_napari_viewer()
 
@@ -253,7 +239,7 @@ def test_calibrate_success_with_real_model_and_mocked_predictions(
             Select_Points_layer=points_layer,
             viewer=viewer,
             Division_size=100,
-            Calibration_proportion=0.5,  # ensures at least one calibration tile
+            Calibration_proportion=0.5,
             Save_folder=tmp_path,
             Experiment_name="test_calib",
             Random_seed=42,
@@ -263,7 +249,6 @@ def test_calibrate_success_with_real_model_and_mocked_predictions(
     assert "Best threshold" in result
     assert "MAPE" in result
 
-    # Check saved files in the mocked subfolder
     plot_file = fake_subfolder / "Calibration_error_plot.png"
     assert plot_file.exists()
     meta_file = fake_subfolder / "metadata.txt"
@@ -272,9 +257,8 @@ def test_calibrate_success_with_real_model_and_mocked_predictions(
     assert points_file.exists()
 
     df = pd.read_csv(points_file)
-    assert list(df.columns) == ["frame", "y", "x"]
+    assert list(df.columns) == ["index", "axis-0", "axis-1"]
     assert len(df) == 2
-    assert df["frame"].iloc[0] == 0
 
     meta_text = meta_file.read_text()
     assert "Overall threshold" in meta_text
@@ -319,7 +303,6 @@ def test_calibrate_success_with_real_yolov5_model(
 def test_calibrate_with_dask_array(
     make_napari_viewer, real_yolov11_model, tmp_path, mock_subfolder
 ):
-    """Image data as Dask array should be converted to numpy."""
     fake_subfolder, _ = mock_subfolder
     viewer = make_napari_viewer()
     numpy_arr = np.random.randint(0, 255, (200, 200), dtype=np.uint8)
@@ -344,7 +327,7 @@ def test_calibrate_with_dask_array(
             Select_Points_layer=points_layer,
             viewer=viewer,
             Division_size=100,
-            Calibration_proportion=0.5,  # ensures calibration tiles exist
+            Calibration_proportion=0.5,
             Save_folder=tmp_path,
         )
     assert result is not None
@@ -383,14 +366,13 @@ def test_calibrate_multiframe(
     assert result is not None
     points_file = fake_subfolder / "reference_points.csv"
     df = pd.read_csv(points_file)
-    assert list(df.columns) == ["frame", "y", "x"]
-    assert set(df["frame"]) == {0, 1, 2}
+    assert list(df.columns) == ["index", "axis-0", "axis-1", "axis-2"]
+    assert set(df["axis-0"]) == {0, 1, 2}
 
 
 def test_calibrate_no_detections(
     make_napari_viewer, real_yolov11_model, tmp_path
 ):
-    """If model makes no detections on calibration tiles, return None."""
     viewer = make_napari_viewer()
     image_data = np.random.randint(0, 255, (200, 200), dtype=np.uint8)
     points_data = np.array([[50, 50], [150, 150]])
@@ -409,7 +391,7 @@ def test_calibrate_no_detections(
     ):
         widget = calibrate_with_points()
         with patch(
-            "napari_nuclephaser.calibrate_points.show_error"
+            "napari_nuclephaser.calibrate_points.show_modal_error"
         ) as mock_error:
             result = widget(
                 Select_Phase_stack=viewer.layers["Phase"],
@@ -427,7 +409,6 @@ def test_calibrate_no_detections(
 def test_calibrate_all_tiles_calibration(
     make_napari_viewer, real_yolov11_model, tmp_path, mock_subfolder
 ):
-    """Calibration_proportion = 1.0 -> no test tiles, but calibration still runs."""
     fake_subfolder, _ = mock_subfolder
     viewer = make_napari_viewer()
     image_data = np.random.randint(0, 255, (200, 200), dtype=np.uint8)
@@ -454,7 +435,33 @@ def test_calibrate_all_tiles_calibration(
             Calibration_proportion=1.0,
             Save_folder=tmp_path,
         )
-    # Returns string even without test tiles (no MAPE)
     assert result is not None
     assert (fake_subfolder / "reference_points.csv").exists()
     assert (fake_subfolder / "metadata.txt").exists()
+
+
+def test_folder_persistence_roundtrip(tmp_path, monkeypatch):
+    """Cover the JSON folder persistence helpers directly."""
+    import json
+    import pathlib
+
+    import napari_nuclephaser.calibrate_points as cp_module
+
+    fake_config = tmp_path / "config.json"
+    monkeypatch.setattr(cp_module, "CONFIG_PATH", fake_config)
+
+    # No file yet -> default "."
+    assert cp_module._load_last_folder() == pathlib.Path(".")
+
+    first = pathlib.Path("/some/folder")
+    cp_module._save_last_folder(first)
+    assert cp_module._load_last_folder() == first
+
+    second = pathlib.Path("/another/folder")
+    cp_module._save_last_folder(second)
+    assert cp_module._load_last_folder() == second
+
+    # JSON is well-formed and stores the expected string representation
+    with open(fake_config, encoding="utf-8") as f:
+        data = json.load(f)
+    assert data["last_folder"] == str(second)

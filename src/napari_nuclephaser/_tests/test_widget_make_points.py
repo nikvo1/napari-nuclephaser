@@ -42,9 +42,9 @@ def test_make_points_basic(make_napari_viewer, mock_prediction):
             Detection_mode="Regular detection",
         )
 
-        assert len(viewer.layers) == 2, "Should add points layer"
+        assert len(viewer.layers) == 2
         points_layer = viewer.layers["2 points test_image"]
-        assert len(points_layer.data) == 2, "Should create 2 points"
+        assert len(points_layer.data) == 2
 
 
 def test_make_points_bbox_generation(make_napari_viewer, mock_prediction):
@@ -75,8 +75,8 @@ def test_make_points_bbox_generation(make_napari_viewer, mock_prediction):
         )
 
         shapes_layer = viewer.layers[-1]
-        assert len(shapes_layer.data) == 2, "Should create 2 bounding boxes"
-        assert shapes_layer.edge_width[0] == 5, "Should use default thickness"
+        assert len(shapes_layer.data) == 2
+        assert shapes_layer.edge_width[0] == 5
 
 
 def test_make_points_with_confidence(make_napari_viewer, mock_prediction):
@@ -107,9 +107,7 @@ def test_make_points_with_confidence(make_napari_viewer, mock_prediction):
         )
 
         shapes_layer = viewer.layers[-1]
-        assert (
-            shapes_layer.text is not None
-        ), "Should display confidence scores"
+        assert shapes_layer.text is not None
 
 
 def test_make_points_default_generation(make_napari_viewer, mock_prediction):
@@ -143,18 +141,22 @@ def test_make_points_default_generation(make_napari_viewer, mock_prediction):
 
 def test_make_points_error_handling(make_napari_viewer):
     viewer = make_napari_viewer()
-    # Create invalid 3D image (stack)
     image_layer = viewer.add_image(np.random.rand(5, 100, 100))
 
     widget = make_points()
-    result = widget(
-        Select_image=image_layer,
-        viewer=viewer,
-        Detection_mode="Regular detection",
-    )
+    with patch(
+        "napari_nuclephaser.predict_on_single.show_modal_error"
+    ) as mock_error:
+        result = widget(
+            Select_image=image_layer,
+            viewer=viewer,
+            Detection_mode="Regular detection",
+        )
 
-    assert result is None, "Should return None on error"
-    assert len(viewer.layers) == 1, "Shouldn't add layers on error"
+    assert result is None
+    assert len(viewer.layers) == 1
+    mock_error.assert_called_once()
+    assert "Image is not a single frame" in mock_error.call_args[0][0]
 
 
 def test_make_points_parameter_effects(make_napari_viewer, mock_prediction):
@@ -188,5 +190,5 @@ def test_make_points_parameter_effects(make_napari_viewer, mock_prediction):
         )
 
         shapes_layer = viewer.layers[-1]
-        assert shapes_layer.edge_width[0] == 2, "Should respect bbox thickness"
-        assert shapes_layer.text.size == 5, "Should respect score text size"
+        assert shapes_layer.edge_width[0] == 2
+        assert shapes_layer.text.size == 5

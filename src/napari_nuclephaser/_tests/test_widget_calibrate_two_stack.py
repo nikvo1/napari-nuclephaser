@@ -6,9 +6,14 @@ from napari.layers import Points
 from napari_nuclephaser.predict_two_stack import predict_on_two_stack
 
 
-def test_predict_on_two_stack_valid(make_napari_viewer, mocker, tmp_path):
+def test_predict_on_two_stack_valid(
+    make_napari_viewer, mocker, tmp_path, monkeypatch
+):
+    import napari_nuclephaser.predict_two_stack as pts_module
+
+    monkeypatch.setattr(pts_module, "CONFIG_PATH", tmp_path / "config.json")
+
     viewer = make_napari_viewer()
-    # 2D stack: 2x3 frames of 50x50
     valid_stack = np.random.randint(0, 255, (2, 3, 50, 50), dtype=np.uint8)
     image_layer = viewer.add_image(valid_stack, name="test_2stack")
 
@@ -22,16 +27,16 @@ def test_predict_on_two_stack_valid(make_napari_viewer, mocker, tmp_path):
     )
     mock_det1 = MagicMock()
     mock_det1.bbox.minx = 10
-    mock_det1.bbox.maxx = 30  # 10+20
+    mock_det1.bbox.maxx = 30
     mock_det1.bbox.miny = 10
-    mock_det1.bbox.maxy = 30  # 10+20
+    mock_det1.bbox.maxy = 30
     mock_det1.score.value = 0.9
 
     mock_det2 = MagicMock()
     mock_det2.bbox.minx = 30
-    mock_det2.bbox.maxx = 50  # 30+20
+    mock_det2.bbox.maxx = 50
     mock_det2.bbox.miny = 30
-    mock_det2.bbox.maxy = 50  # 30+20
+    mock_det2.bbox.maxy = 50
     mock_det2.score.value = 0.8
 
     mock_result = MagicMock()
@@ -42,7 +47,7 @@ def test_predict_on_two_stack_valid(make_napari_viewer, mocker, tmp_path):
         "napari_nuclephaser.predict_two_stack.show_info"
     )
     mock_show_error = mocker.patch(
-        "napari_nuclephaser.predict_two_stack.show_error"
+        "napari_nuclephaser.predict_two_stack.show_modal_error"
     )
 
     widget = predict_on_two_stack()
@@ -59,10 +64,9 @@ def test_predict_on_two_stack_valid(make_napari_viewer, mocker, tmp_path):
         Save_format="CSV",
     )
 
-    # There are 2*3 = 6 frames, each with 2 detections → 12 points (4D)
     points_layer = viewer.layers[-1]
     assert isinstance(points_layer, Points)
-    assert points_layer.data.shape == (12, 4), "Expected 12 points in 4D"
+    assert points_layer.data.shape == (12, 4)
 
     mock_show_info.assert_called_once_with(
         "Made predictions for 2-stack successfully!"

@@ -6,7 +6,13 @@ from napari.layers import Points
 from napari_nuclephaser.predict_one_stack import predict_on_stack
 
 
-def test_predict_on_stack_valid(make_napari_viewer, mocker, tmp_path):
+def test_predict_on_stack_valid(
+    make_napari_viewer, mocker, tmp_path, monkeypatch
+):
+    import napari_nuclephaser.predict_one_stack as pos_module
+
+    monkeypatch.setattr(pos_module, "CONFIG_PATH", tmp_path / "config.json")
+
     viewer = make_napari_viewer()
     valid_stack = np.random.randint(0, 255, (10, 100, 100), dtype=np.uint8)
     image_layer = viewer.add_image(valid_stack, name="test_stack")
@@ -22,16 +28,16 @@ def test_predict_on_stack_valid(make_napari_viewer, mocker, tmp_path):
     )
     mock_det1 = MagicMock()
     mock_det1.bbox.minx = 10
-    mock_det1.bbox.maxx = 30  # 10+20
+    mock_det1.bbox.maxx = 30
     mock_det1.bbox.miny = 10
-    mock_det1.bbox.maxy = 30  # 10+20
+    mock_det1.bbox.maxy = 30
     mock_det1.score.value = 0.9
 
     mock_det2 = MagicMock()
     mock_det2.bbox.minx = 30
-    mock_det2.bbox.maxx = 50  # 30+20
+    mock_det2.bbox.maxx = 50
     mock_det2.bbox.miny = 30
-    mock_det2.bbox.maxy = 50  # 30+20
+    mock_det2.bbox.maxy = 50
     mock_det2.score.value = 0.8
 
     mock_result = MagicMock()
@@ -42,7 +48,7 @@ def test_predict_on_stack_valid(make_napari_viewer, mocker, tmp_path):
         "napari_nuclephaser.predict_one_stack.show_info"
     )
     mock_show_error = mocker.patch(
-        "napari_nuclephaser.predict_one_stack.show_error"
+        "napari_nuclephaser.predict_one_stack.show_modal_error"
     )
 
     widget = predict_on_stack()
@@ -65,10 +71,10 @@ def test_predict_on_stack_valid(make_napari_viewer, mocker, tmp_path):
         Save_format="CSV",
     )
 
-    assert len(viewer.layers) == 2, "Points layer should be added"
+    assert len(viewer.layers) == 2
     points_layer = viewer.layers[-1]
-    assert isinstance(points_layer, Points), "Added layer should be Points"
-    assert points_layer.data.shape == (20, 3), "Unexpected points shape"
+    assert isinstance(points_layer, Points)
+    assert points_layer.data.shape == (20, 3)
 
     mock_show_info.assert_called_once_with(
         "Made predictions for stack successfully!"
@@ -76,13 +82,19 @@ def test_predict_on_stack_valid(make_napari_viewer, mocker, tmp_path):
     mock_show_error.assert_not_called()
 
 
-def test_predict_on_stack_invalid_input(make_napari_viewer, mocker):
+def test_predict_on_stack_invalid_input(
+    make_napari_viewer, mocker, tmp_path, monkeypatch
+):
+    import napari_nuclephaser.predict_one_stack as pos_module
+
+    monkeypatch.setattr(pos_module, "CONFIG_PATH", tmp_path / "config.json")
+
     viewer = make_napari_viewer()
     invalid_image = np.random.randint(0, 255, (100, 100), dtype=np.uint8)
     image_layer = viewer.add_image(invalid_image, name="invalid_image")
 
     mock_show_error = mocker.patch(
-        "napari_nuclephaser.predict_one_stack.show_error"
+        "napari_nuclephaser.predict_one_stack.show_modal_error"
     )
 
     widget = predict_on_stack()
@@ -95,10 +107,16 @@ def test_predict_on_stack_invalid_input(make_napari_viewer, mocker):
     mock_show_error.assert_called_once_with(
         "Chosen image is a single frame, not a stack!"
     )
-    assert len(viewer.layers) == 1, "No additional layers should be added"
+    assert len(viewer.layers) == 1
 
 
-def test_predict_on_stack_saving_files(make_napari_viewer, mocker, tmp_path):
+def test_predict_on_stack_saving_files(
+    make_napari_viewer, mocker, tmp_path, monkeypatch
+):
+    import napari_nuclephaser.predict_one_stack as pos_module
+
+    monkeypatch.setattr(pos_module, "CONFIG_PATH", tmp_path / "config.json")
+
     viewer = make_napari_viewer()
     valid_stack = np.random.randint(0, 255, (2, 50, 50), dtype=np.uint8)
     image_layer = viewer.add_image(valid_stack, name="save_test")
@@ -116,7 +134,7 @@ def test_predict_on_stack_saving_files(make_napari_viewer, mocker, tmp_path):
     mock_sliced_pred.return_value = mock_result
 
     mocker.patch("napari_nuclephaser.predict_one_stack.show_info")
-    mocker.patch("napari_nuclephaser.predict_one_stack.show_error")
+    mocker.patch("napari_nuclephaser.predict_one_stack.show_modal_error")
 
     widget = predict_on_stack()
     widget(
@@ -131,10 +149,10 @@ def test_predict_on_stack_saving_files(make_napari_viewer, mocker, tmp_path):
     )
 
     subfolder = tmp_path / "test_save"
-    assert subfolder.exists(), "Subfolder should be created"
+    assert subfolder.exists()
 
-    csv_file = subfolder / "save_test count results.csv"
-    metadata_file = subfolder / "save_test count metadata.txt"
+    csv_file = subfolder / "count_results.csv"
+    metadata_file = subfolder / "metadata.txt"
 
-    assert csv_file.exists(), "CSV file should be saved"
-    assert metadata_file.exists(), "Metadata file should be saved"
+    assert csv_file.exists()
+    assert metadata_file.exists()
