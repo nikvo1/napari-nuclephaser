@@ -1,3 +1,4 @@
+import json
 import os
 import pathlib
 import pickle
@@ -12,7 +13,7 @@ import pandas as pd
 from magicgui import magic_factory
 from napari.layers import Image
 from napari.utils import progress
-from napari.utils.notifications import show_error, show_info
+from napari.utils.notifications import show_info
 from sahi.predict import get_sliced_prediction
 from torch import cuda
 
@@ -21,7 +22,11 @@ try:
 except ImportError:
     from numpy.lib.stride_tricks import sliding_window_view as view_as_windows
 
-from napari_nuclephaser.utils import initialize_model
+from napari_nuclephaser.utils import (
+    create_unique_subfolder,
+    initialize_model,
+    show_modal_error,
+)
 
 warnings.filterwarnings(action="ignore", category=FutureWarning)
 warnings.filterwarnings(action="ignore", category=UserWarning)
@@ -30,6 +35,108 @@ cuda_available = "cuda:0" if cuda.is_available() else "cpu"
 
 models_folder = pathlib.Path(pathlib.Path(__file__).parent / "models")
 first_model = next((x for x in models_folder.iterdir() if x.is_file()), None)
+
+CONFIG_PATH = pathlib.Path.home() / ".napari_nuclephaser.json"
+
+
+def _load_last_folder():
+    try:
+        with open(CONFIG_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        path_str = data.get("last_folder", ".")
+        if not isinstance(path_str, str) or not path_str.strip():
+            return pathlib.Path(".")
+        return pathlib.Path(path_str)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return pathlib.Path(".")
+
+
+def _save_last_folder(value):
+    try:
+        data = {}
+        if CONFIG_PATH.is_file():
+            try:
+                with open(CONFIG_PATH, encoding="utf-8") as f:
+                    data = json.load(f)
+                if not isinstance(data, dict):
+                    data = {}
+            except (OSError, ValueError):
+                data = {}
+        data["last_folder"] = str(value)
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except OSError:
+        pass
+
+
+DEFAULT_FOLDER = _load_last_folder()
+
+
+def _save_points_csv(points_data, csv_path):
+    """Save points in napari-readable CSV format (index, axis-0, ...)."""
+    if isinstance(points_data, list):
+        points_data = (
+            np.array(points_data, dtype=float)
+            if len(points_data) > 0
+            else np.empty((0, 2))
+        )
+    points_data = np.asarray(points_data)
+    if points_data.size == 0:
+        pd.DataFrame(columns=["index", "axis-0", "axis-1"]).to_csv(
+            csv_path, index=False
+        )
+        return
+    if points_data.ndim == 1:
+        points_data = points_data.reshape(-1, 1)
+    n_points = len(points_data)
+    n_dims = points_data.shape[1]
+    data = {"index": np.arange(n_points)}
+    for dim in range(n_dims):
+        data[f"axis-{dim}"] = points_data[:, dim]
+    pd.DataFrame(data).to_csv(csv_path, index=False)
+
+
+def _save_boxes_csv(boxes_list, csv_path):
+    """Save boxes in napari-readable Shapes CSV format.
+
+    boxes_list: list of Nx2 arrays; each row is a vertex in (y, x) order.
+    """
+    rows = []
+    for shape_idx, box in enumerate(boxes_list):
+        box = np.asarray(box)
+        for v_idx, vertex in enumerate(box):
+            rows.append(
+                {
+                    "index": shape_idx,
+                    "shape-type": "rectangle",
+                    "vertex-index": v_idx,
+                    "axis-0": float(vertex[0]),
+                    "axis-1": float(vertex[1]),
+                }
+            )
+    columns = ["index", "shape-type", "vertex-index", "axis-0", "axis-1"]
+    if rows:
+        pd.DataFrame(rows).to_csv(csv_path, index=False)
+    else:
+        pd.DataFrame(columns=columns).to_csv(csv_path, index=False)
+
+
+def _save_counts(count, image_name, subfolder, save_format):
+    """Save the detection count as CSV / XLSX depending on save_format."""
+    count_df = pd.DataFrame({"Image": [image_name], "Count": [count]})
+    if save_format in ("CSV", "Both"):
+        count_df.to_csv(
+            os.path.join(subfolder, "count_results.csv"), index=False
+        )
+    if save_format in ("XLSX", "Both"):
+        count_df.to_excel(
+            os.path.join(subfolder, "count_results.xlsx"), index=False
+        )
+
+
+def _save_metadata(metadata_text, subfolder, filename="metadata.txt"):
+    with open(os.path.join(subfolder, filename), "w", encoding="utf-8") as f:
+        f.write(metadata_text)
 
 
 def _native(img):
@@ -256,7 +363,10 @@ def _parse_metadata(metadata_path):
     Experiment_name={
         "tooltip": "Name of the subfolder that will be created for the results (TTA Detection_mode only)."
     },
-    Save_folder={"mode": "d"},
+    Save_folder={
+        "mode": "d",
+        "value": DEFAULT_FOLDER,
+    },
     call_button="Predict",
     auto_call=False,
     result_widget=False,
@@ -270,7 +380,7 @@ def make_points(
     Detection_mode="Regular detection",
     Mode_file=pathlib.Path(),
     Save_result=False,
-    Save_folder=pathlib.Path(),
+    Save_folder=DEFAULT_FOLDER,
     Experiment_name="Experiment",
     Save_format="CSV",
     ADVANCED_SETTINGS="",
@@ -288,18 +398,18 @@ def make_points(
 
     if Detection_mode != "Regular detection":
         if not Mode_file or not Mode_file.exists():
-            show_error(
+            show_modal_error(
                 f"Detection mode '{Detection_mode}' requires a valid mode file. See docs for more details."
             )
             return None
 
         if use_tta and Mode_file.suffix.lower() != ".txt":
-            show_error(
+            show_modal_error(
                 "TTA detection mode requires a .txt metadata file. See docs for more details."
             )
             return None
         if use_dynamic and Mode_file.suffix.lower() != ".pkl":
-            show_error(
+            show_modal_error(
                 "Dynamic threshold detection mode requires a .pkl file. See docs for more details."
             )
             return None
@@ -310,7 +420,7 @@ def make_points(
     if len(pic.shape) > 3 or (
         len(pic.shape) == 3 and pic.shape[-1] not in (1, 3, 4)
     ):
-        show_error(
+        show_modal_error(
             "Image is not a single frame! Use different widget for processing stacks of images"
         )
         return None
@@ -319,15 +429,22 @@ def make_points(
         pic = cv2.convertScaleAbs(pic, alpha=255 / 65535)
         pic = pic.astype(np.uint8)
 
+    if Save_result:
+        if not Save_folder:
+            show_modal_error("Please select a save folder.")
+            return None
+        _save_last_folder(Save_folder)
+
     viewer.window._status_bar._toggle_activity_dock(True)
 
+    # =============================== TTA ===============================
     if use_tta:
         try:
             best_augs, aug_thresholds, model_name_meta = _parse_metadata(
                 str(Mode_file)
             )
         except (ValueError, OSError, KeyError) as e:
-            show_error(f"Failed to parse metadata file: {e}")
+            show_modal_error(f"Failed to parse metadata file: {e}")
             viewer.window._status_bar._toggle_activity_dock(False)
             return None
 
@@ -337,13 +454,20 @@ def make_points(
                 f"Warning: Selected model ({selected_model_name}) does not match model in metadata ({model_name_meta}). Continuing anyway."
             )
 
+        # Create subfolder before processing if we will save results
+        tta_subfolder = None
+        if Save_result:
+            tta_subfolder = create_unique_subfolder(
+                str(Save_folder), str(Experiment_name)
+            )
+
         all_counts = []
         with progress(
             total=len(best_augs), desc="Detection with augmentations"
         ) as pbar_augs:
             for aug_name in best_augs:
                 if aug_name not in AUGMENTATION_MAP:
-                    show_error(
+                    show_modal_error(
                         f"Unknown augmentation '{aug_name}' in metadata. Skipping this augmentation."
                     )
                     pbar_augs.update(1)
@@ -470,46 +594,82 @@ def make_points(
                             name=f"{n_cells} bounding boxes ({aug_name}) {name}",
                         )
 
+                # Save points / boxes / counts per augmentation
+                if Save_result and tta_subfolder is not None:
+                    if Output_format == "Points":
+                        _save_points_csv(
+                            points_aug,
+                            os.path.join(
+                                tta_subfolder,
+                                f"result_points_{aug_name}.csv",
+                            ),
+                        )
+                    else:
+                        _save_boxes_csv(
+                            bboxes_aug,
+                            os.path.join(
+                                tta_subfolder,
+                                f"result_boxes_{aug_name}.csv",
+                            ),
+                        )
+
+                    count_df_aug = pd.DataFrame(
+                        {"Augmentation": [aug_name], "Count": [n_cells]}
+                    )
+                    if Save_format in ("CSV", "Both"):
+                        count_df_aug.to_csv(
+                            os.path.join(
+                                tta_subfolder,
+                                f"count_results_{aug_name}.csv",
+                            ),
+                            index=False,
+                        )
+                    if Save_format in ("XLSX", "Both"):
+                        count_df_aug.to_excel(
+                            os.path.join(
+                                tta_subfolder,
+                                f"count_results_{aug_name}.xlsx",
+                            ),
+                            index=False,
+                        )
+
                 all_counts.append(n_cells)
                 pbar_augs.update(1)
 
         avg_count = np.mean(all_counts) if all_counts else 0
-        if Save_result:
-            from napari_nuclephaser.utils import create_unique_subfolder
 
-            subfolder = create_unique_subfolder(
-                str(Save_folder), str(Experiment_name)
+        if Save_result and tta_subfolder is not None:
+            # Averaged count summary
+            avg_df = pd.DataFrame(
+                {"Image": [name], "Averaged_count": [avg_count]}
             )
-            result_table = {"Frame": [name], "Count": [avg_count]}
-            df = pd.DataFrame.from_dict(result_table)
-
             if Save_format in ("CSV", "Both"):
-                df.to_csv(
-                    os.path.join(subfolder, f"{name}_TTA_averaged_counts.csv"),
+                avg_df.to_csv(
+                    os.path.join(tta_subfolder, "count_results_averaged.csv"),
                     index=False,
                 )
             if Save_format in ("XLSX", "Both"):
-                df.to_excel(
-                    os.path.join(
-                        subfolder, f"{name}_TTA_averaged_counts.xlsx"
-                    ),
+                avg_df.to_excel(
+                    os.path.join(tta_subfolder, "count_results_averaged.xlsx"),
                     index=False,
                 )
 
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
             metadata = f"""Experiment time: {current_date}
-TTA prediction on single image
+Prediction on single image
+Detection mode: Detection with TTA
 Image name: {name}
 Detection model: {Select_model}
 Augmentations used: {' + '.join(best_augs)}
 Per‑augmentation thresholds: {aug_thresholds}
+Per‑augmentation counts: {dict(zip(best_augs, all_counts, strict=False))}
 Averaged detection count: {avg_count:.2f}
+Output format: {Output_format}
 SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Postprocess}, match_metric={Match_metric}, iou_thr={Intersection_threshold}
 """
-            metadata_path = os.path.join(subfolder, f"{name}_TTA_metadata.txt")
-            with open(metadata_path, "w", encoding="utf-8") as f:
-                f.write(metadata)
-            show_info(f"TTA results saved in {subfolder}")
+            _save_metadata(metadata, tta_subfolder, "metadata.txt")
+
+            show_info(f"TTA results saved in {tta_subfolder}")
         else:
             show_info(
                 f"TTA inference complete. Averaged detection count = {avg_count:.2f}"
@@ -518,6 +678,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         viewer.window._status_bar._toggle_activity_dock(False)
         return None
 
+    # ============================ DYNAMIC ==============================
     if use_dynamic:
         with open(Mode_file, "rb") as f:
             model_data = pickle.load(f)
@@ -606,15 +767,10 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             win_size = max(img_h, img_w)
             stride = win_size
 
-        x_starts = list(range(0, img_w - win_size + 1, stride))
-        y_starts = list(range(0, img_h - win_size + 1, stride))
-        if x_starts[-1] + win_size < img_w:
-            x_starts.append(img_w - win_size)
-        if y_starts[-1] + win_size < img_h:
-            y_starts.append(img_h - win_size)
-
         windows = view_as_windows(gray, (win_size, win_size), step=stride)
         n_y, n_x, win_h, win_w = windows.shape
+        x_starts = [i * stride for i in range(n_x)]
+        y_starts = [i * stride for i in range(n_y)]
 
         windows_flat = windows.reshape(-1, win_h, win_w).astype(np.float64)
 
@@ -799,8 +955,6 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
                 )
 
         if Save_result:
-            from napari_nuclephaser.utils import create_unique_subfolder
-
             subfolder = create_unique_subfolder(
                 str(Save_folder), str(Experiment_name)
             )
@@ -809,20 +963,18 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             )
             os.makedirs(dynamic_folder, exist_ok=True)
 
-            result_table = {"Frame": [name], "Filtered_count": [n_filtered]}
-            df_res = pd.DataFrame.from_dict(result_table)
+            _save_counts(n_filtered, name, dynamic_folder, Save_format)
 
-            if Save_format in ("CSV", "Both"):
-                df_res.to_csv(
-                    os.path.join(dynamic_folder, f"{name}_dynamic_counts.csv"),
-                    index=False,
+            # Save points or boxes
+            if Output_format == "Points":
+                _save_points_csv(
+                    filtered_points,
+                    os.path.join(dynamic_folder, "result_points.csv"),
                 )
-            if Save_format in ("XLSX", "Both"):
-                df_res.to_excel(
-                    os.path.join(
-                        dynamic_folder, f"{name}_dynamic_counts.xlsx"
-                    ),
-                    index=False,
+            else:
+                _save_boxes_csv(
+                    filtered_boxes,
+                    os.path.join(dynamic_folder, "result_boxes.csv"),
                 )
 
             import shutil
@@ -834,19 +986,17 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
 
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
             metadata = f"""Experiment time: {current_date}
-Dynamic threshold prediction on single image
+Prediction on single image
+Detection mode: Detection with Dynamic threshold
 Image napari name: {name}
 Detection model: {Select_model}
 Dynamic threshold .pkl file: {Mode_file.name}
 Number of detections before filtering: {len(det_list)}
 Number of detections after filtering: {n_filtered}
+Output format: {Output_format}
 SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Postprocess}, match_metric={Match_metric}, iou_thr={Intersection_threshold}
 """
-            metadata_path = os.path.join(
-                dynamic_folder, f"{name}_dynamic_metadata.txt"
-            )
-            with open(metadata_path, "w", encoding="utf-8") as f:
-                f.write(metadata)
+            _save_metadata(metadata, dynamic_folder, "metadata.txt")
             show_info(f"Dynamic threshold results saved in {dynamic_folder}")
         else:
             show_info(
@@ -856,6 +1006,7 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         viewer.window._status_bar._toggle_activity_dock(False)
         return None
 
+    # ========================== REGULAR DETECTION ======================
     initialization_pbar = progress(total=0, desc="Initializing model")
     detection_model, model_type = initialize_model(
         rf"{Select_model}", Confidence_threshold, cuda_available
@@ -893,6 +1044,15 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
 
     result = result.to_coco_predictions()
 
+    # Create subfolder once if we're going to save results
+    regular_subfolder = None
+    if Save_result:
+        regular_subfolder = create_unique_subfolder(
+            str(Save_folder), str(Experiment_name)
+        )
+
+    n_cells = 0
+
     if Output_format == "Points":
         points = []
         for instance in result:
@@ -911,6 +1071,12 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
                 np.empty((0, 3)),
                 size=Points_size,
                 name=f"0 points {name}",
+            )
+
+        if Save_result and regular_subfolder is not None:
+            _save_points_csv(
+                points,
+                os.path.join(regular_subfolder, "result_points.csv"),
             )
     elif (
         Output_format == "Bounding boxes"
@@ -957,6 +1123,12 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
                 properties=properties,
                 name=f"{n_cells} bounding boxes {name}",
             )
+
+        if Save_result and regular_subfolder is not None:
+            _save_boxes_csv(
+                bboxes,
+                os.path.join(regular_subfolder, "result_boxes.csv"),
+            )
     else:
         points = []
         for instance in result:
@@ -969,6 +1141,30 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             size=Points_size,
             name=f"{n_cells} points {name}",
         )
+
+        if Save_result and regular_subfolder is not None:
+            _save_points_csv(
+                points,
+                os.path.join(regular_subfolder, "result_points.csv"),
+            )
+
+    # Save count results and metadata
+    if Save_result and regular_subfolder is not None:
+        _save_counts(n_cells, name, regular_subfolder, Save_format)
+
+        current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
+        metadata = f"""Experiment time: {current_date}
+Prediction on single image
+Detection mode: Regular detection
+Image name: {name}
+Detection model: {Select_model}
+Confidence threshold: {Confidence_threshold}
+Output format: {Output_format}
+Number of detected objects: {n_cells}
+SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Postprocess}, match_metric={Match_metric}, iou_thr={Intersection_threshold}
+"""
+        _save_metadata(metadata, regular_subfolder, "metadata.txt")
+        show_info(f"Results saved in {regular_subfolder}")
 
     viewer.window._status_bar._toggle_activity_dock(False)
     return None

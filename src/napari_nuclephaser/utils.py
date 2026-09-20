@@ -2,6 +2,7 @@ import os
 import pathlib
 import platform
 
+from napari.utils.notifications import show_warning
 from sahi import AutoDetectionModel
 
 
@@ -63,3 +64,73 @@ def create_unique_subfolder(parent_folder, subfolder_name):
             os.makedirs(new_path)
             return new_path
         counter += 1
+
+
+def show_modal_warning(message):
+    """Show a modal warning that requires the user to press OK.
+
+    Returns True if the user pressed OK, False otherwise.
+    Falls back to napari's passive show_warning if Qt is unavailable,
+    in which case True is returned (nothing to confirm).
+    """
+    try:
+        from qtpy.QtWidgets import QMessageBox
+
+        msg = QMessageBox()
+        msg.setWindowTitle("Warning")
+        msg.setText(message)
+
+        icon_enum = getattr(QMessageBox, "Icon", None)
+        button_enum = getattr(QMessageBox, "StandardButton", None)
+
+        if icon_enum is not None:
+            msg.setIcon(icon_enum.Warning)
+        else:
+            msg.setIcon(QMessageBox.Warning)
+
+        if button_enum is not None:
+            msg.setStandardButtons(button_enum.Ok)
+        else:
+            msg.setStandardButtons(QMessageBox.Ok)
+
+        msg.exec_()
+        return True
+    except (ImportError, AttributeError, RuntimeError):
+        show_warning(message)
+        return True
+
+
+def show_modal_error(message):
+    """Show a modal error dialog that requires the user to press OK.
+
+    Works across all Qt backends supported by napari (PyQt5, PySide2,
+    PyQt6, PySide6) via qtpy. Falls back to napari's passive
+    show_error if Qt is unavailable or the dialog fails.
+    """
+    try:
+        from qtpy.QtWidgets import QMessageBox
+
+        msg = QMessageBox()
+        msg.setWindowTitle("Error")
+        msg.setText(message)
+
+        icon_enum = getattr(QMessageBox, "Icon", None)
+        button_enum = getattr(QMessageBox, "StandardButton", None)
+
+        if icon_enum is not None:
+            msg.setIcon(icon_enum.Critical)
+        else:
+            msg.setIcon(QMessageBox.Critical)
+
+        if button_enum is not None:
+            msg.setStandardButtons(button_enum.Ok)
+        else:
+            msg.setStandardButtons(QMessageBox.Ok)
+
+        msg.exec_()
+        return True
+    except (ImportError, AttributeError, RuntimeError):
+        from napari.utils.notifications import show_error
+
+        show_error(message)
+        return True

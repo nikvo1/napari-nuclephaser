@@ -1,3 +1,4 @@
+import json
 import os
 import pathlib
 import pickle
@@ -12,7 +13,7 @@ import pandas as pd
 from magicgui import magic_factory
 from napari.layers import Image
 from napari.utils import progress
-from napari.utils.notifications import show_error, show_info
+from napari.utils.notifications import show_info
 from sahi.predict import get_sliced_prediction
 from torch import cuda
 
@@ -21,7 +22,11 @@ try:
 except ImportError:
     from numpy.lib.stride_tricks import sliding_window_view as view_as_windows
 
-from napari_nuclephaser.utils import create_unique_subfolder, initialize_model
+from napari_nuclephaser.utils import (
+    create_unique_subfolder,
+    initialize_model,
+    show_modal_error,
+)
 
 warnings.filterwarnings(action="ignore", category=FutureWarning)
 warnings.filterwarnings(action="ignore", category=UserWarning)
@@ -30,6 +35,109 @@ cuda_available = "cuda:0" if cuda.is_available() else "cpu"
 
 models_folder = pathlib.Path(pathlib.Path(__file__).parent / "models")
 first_model = next((x for x in models_folder.iterdir() if x.is_file()), None)
+
+CONFIG_PATH = pathlib.Path.home() / ".napari_nuclephaser.json"
+
+
+def _load_last_folder():
+    try:
+        with open(CONFIG_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        path_str = data.get("last_folder", ".")
+        if not isinstance(path_str, str) or not path_str.strip():
+            return pathlib.Path(".")
+        return pathlib.Path(path_str)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return pathlib.Path(".")
+
+
+def _save_last_folder(value):
+    try:
+        data = {}
+        if CONFIG_PATH.is_file():
+            try:
+                with open(CONFIG_PATH, encoding="utf-8") as f:
+                    data = json.load(f)
+                if not isinstance(data, dict):
+                    data = {}
+            except (OSError, ValueError):
+                data = {}
+        data["last_folder"] = str(value)
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except OSError:
+        pass
+
+
+DEFAULT_FOLDER = _load_last_folder()
+
+
+def _save_points_csv(points_data, csv_path):
+    """Save points in napari-readable CSV format (index, axis-0, ...)."""
+    if isinstance(points_data, list):
+        points_data = (
+            np.array(points_data, dtype=float)
+            if len(points_data) > 0
+            else np.empty((0, 4))
+        )
+    points_data = np.asarray(points_data)
+    if points_data.size == 0:
+        n_dims = points_data.shape[1] if points_data.ndim == 2 else 4
+        columns = ["index"] + [f"axis-{i}" for i in range(n_dims)]
+        pd.DataFrame(columns=columns).to_csv(csv_path, index=False)
+        return
+    if points_data.ndim == 1:
+        points_data = points_data.reshape(-1, 1)
+    n_points = len(points_data)
+    n_dims = points_data.shape[1]
+    data = {"index": np.arange(n_points)}
+    for dim in range(n_dims):
+        data[f"axis-{dim}"] = points_data[:, dim]
+    pd.DataFrame(data).to_csv(csv_path, index=False)
+
+
+def _save_boxes_csv(boxes_list, csv_path):
+    """Save boxes in napari-readable Shapes CSV format.
+
+    boxes_list: list of NxD arrays; each row is a vertex.
+    """
+    rows = []
+    max_dim = 4
+    for shape_idx, box in enumerate(boxes_list):
+        box = np.asarray(box)
+        max_dim = max(max_dim, box.shape[1] if box.ndim == 2 else 1)
+        for v_idx, vertex in enumerate(box):
+            row = {
+                "index": shape_idx,
+                "shape-type": "rectangle",
+                "vertex-index": v_idx,
+            }
+            for dim in range(len(vertex)):
+                row[f"axis-{dim}"] = float(vertex[dim])
+            rows.append(row)
+    columns = ["index", "shape-type", "vertex-index"] + [
+        f"axis-{i}" for i in range(max_dim)
+    ]
+    if rows:
+        pd.DataFrame(rows).to_csv(csv_path, index=False)
+    else:
+        pd.DataFrame(columns=columns).to_csv(csv_path, index=False)
+
+
+def _save_counts_table(
+    result_table, subfolder, save_format, filename="count_results"
+):
+    """Save a per-frame counts dict-like table to CSV / XLSX."""
+    df = pd.DataFrame.from_dict(result_table)
+    if save_format in ("CSV", "Both"):
+        df.to_csv(os.path.join(subfolder, f"{filename}.csv"), index=False)
+    if save_format in ("XLSX", "Both"):
+        df.to_excel(os.path.join(subfolder, f"{filename}.xlsx"), index=False)
+
+
+def _save_metadata(metadata_text, subfolder, filename="metadata.txt"):
+    with open(os.path.join(subfolder, filename), "w", encoding="utf-8") as f:
+        f.write(metadata_text)
 
 
 def _native(img):
@@ -296,7 +404,6 @@ def build_threshold_map(
         key = f"density_{thr:.2f}"
         feature_arrays[key] = density_grids[key].ravel()
 
-    # top10_area computed from detections (per frame)
     sorted_dets = sorted(detections, key=lambda d: d[4], reverse=True)
     n_top = max(1, int(0.1 * len(sorted_dets)))
     top_dets = sorted_dets[:n_top]
@@ -304,13 +411,11 @@ def build_threshold_map(
     top10_area = np.mean(areas) if areas else 0.0
     feature_arrays["top10_area"] = np.full(n_y * n_x, top10_area)
 
-    # Build feature matrix and predict thresholds
     X_win = np.column_stack([feature_arrays[name] for name in feature_names])
     X_win_scaled = scaler.transform(X_win)
     thresholds_pred = regressor.predict(X_win_scaled)
     threshold_grid = thresholds_pred.reshape(n_y, n_x)
 
-    # Create list of window centers with predicted thresholds
     window_centers = []
     for yi, y0 in enumerate(y_starts):
         for xi, x0 in enumerate(x_starts):
@@ -387,7 +492,10 @@ def build_threshold_map(
         "value": "CSV",
         "tooltip": "Select the output format for saving results (when Save_result is enabled).",
     },
-    Save_folder={"mode": "d"},
+    Save_folder={
+        "mode": "d",
+        "value": DEFAULT_FOLDER,
+    },
     call_button="Predict",
     auto_call=False,
     result_widget=False,
@@ -401,7 +509,7 @@ def predict_on_two_stack(
     Detection_mode="Regular detection",
     Mode_file=pathlib.Path(),
     Save_result=True,
-    Save_folder=pathlib.Path(),
+    Save_folder=DEFAULT_FOLDER,
     Experiment_name="Experiment",
     Save_format="CSV",
     ADVANCED_SETTINGS="",
@@ -419,18 +527,18 @@ def predict_on_two_stack(
 
     if Detection_mode != "Regular detection":
         if not Mode_file or not Mode_file.exists():
-            show_error(
+            show_modal_error(
                 f"Detection mode '{Detection_mode}' requires a valid mode file. See docs for more details."
             )
             return None
 
         if use_tta and Mode_file.suffix.lower() != ".txt":
-            show_error(
+            show_modal_error(
                 "TTA detection mode requires a .txt metadata file. See docs for more details."
             )
             return None
         if use_dynamic and Mode_file.suffix.lower() != ".pkl":
-            show_error(
+            show_modal_error(
                 "Dynamic threshold detection mode requires a .pkl file. See docs for more details."
             )
             return None
@@ -441,14 +549,14 @@ def predict_on_two_stack(
         or (len(pic.shape) == 3)
         or (len(pic.shape) == 4 and pic.shape[-1] in (1, 3, 4))
     ):
-        show_error(
+        show_modal_error(
             "Chosen image is a single frame or a 1-stack, not a 2-stack!"
         )
         return None
     if (len(pic.shape) == 5 and pic.shape[-1] not in (1, 3, 4)) or len(
         pic.shape
     ) > 5:
-        show_error("Chosen image has more dimensions than 2-stack!")
+        show_modal_error("Chosen image has more dimensions than 2-stack!")
         return None
 
     is_gray = False
@@ -456,15 +564,22 @@ def predict_on_two_stack(
         is_gray = True
     name = Select_stack.name
 
+    if Save_result:
+        if not Save_folder:
+            show_modal_error("Please select a save folder.")
+            return None
+        _save_last_folder(Save_folder)
+
     viewer.window._status_bar._toggle_activity_dock(True)
 
+    # ================================ TTA ==============================
     if use_tta:
         try:
             best_augs, aug_thresholds, model_name_meta = _parse_metadata(
                 str(Mode_file)
             )
         except (ValueError, OSError, KeyError) as e:
-            show_error(f"Failed to parse metadata file: {e}")
+            show_modal_error(f"Failed to parse metadata file: {e}")
             viewer.window._status_bar._toggle_activity_dock(False)
             return None
 
@@ -477,6 +592,12 @@ def predict_on_two_stack(
         dim1 = len(pic)
         dim2 = len(pic[0]) if dim1 > 0 else 0
 
+        tta_subfolder = None
+        if Save_result:
+            tta_subfolder = create_unique_subfolder(
+                str(Save_folder), str(Experiment_name)
+            )
+
         all_aug_points = []
         all_aug_boxes = []
         all_aug_scores = []
@@ -487,7 +608,7 @@ def predict_on_two_stack(
         ) as pbar_augs:
             for aug_name in best_augs:
                 if aug_name not in AUGMENTATION_MAP:
-                    show_error(
+                    show_modal_error(
                         f"Unknown augmentation '{aug_name}' in metadata. Skipping."
                     )
                     pbar_augs.update(1)
@@ -570,13 +691,11 @@ def predict_on_two_stack(
                                 y2 = det.bbox.maxy
                                 conf = det.score.value
 
-                                # Apply scaling
                                 if scale_factor != 1.0:
                                     x1 *= scale_factor
                                     x2 *= scale_factor
                                     y1 *= scale_factor
                                     y2 *= scale_factor
-                                    # recompute width/height for point
                                     w_orig = x2 - x1
                                     h_orig = y2 - y1
                                     center_x = int(x1 + w_orig // 2)
@@ -587,7 +706,6 @@ def predict_on_two_stack(
 
                                 aug_points.append([i, j, center_y, center_x])
 
-                                # Box vertices (i, j, y, x)
                                 y1_int = int(y1)
                                 x1_int = int(x1)
                                 y2_int = int(y2)
@@ -669,10 +787,26 @@ def predict_on_two_stack(
                     **text_kw,
                 )
 
-        if Save_result:
-            subfolder = create_unique_subfolder(
-                str(Save_folder), str(Experiment_name)
-            )
+            # Save per-augmentation points / boxes
+            if Save_result and tta_subfolder is not None:
+                if Output_format == "Points":
+                    _save_points_csv(
+                        pts,
+                        os.path.join(
+                            tta_subfolder,
+                            f"result_points_{aug_name}.csv",
+                        ),
+                    )
+                else:
+                    _save_boxes_csv(
+                        boxes,
+                        os.path.join(
+                            tta_subfolder,
+                            f"result_boxes_{aug_name}.csv",
+                        ),
+                    )
+
+        if Save_result and tta_subfolder is not None:
             rows = []
             for i in range(dim1):
                 for j in range(dim2):
@@ -686,35 +820,34 @@ def predict_on_two_stack(
             df = pd.DataFrame(rows)
             if Save_format in ("CSV", "Both"):
                 df.to_csv(
-                    os.path.join(subfolder, f"{name}_TTA_averaged_counts.csv"),
+                    os.path.join(tta_subfolder, "count_results_averaged.csv"),
                     index=False,
                 )
             if Save_format in ("XLSX", "Both"):
                 df.to_excel(
-                    os.path.join(
-                        subfolder, f"{name}_TTA_averaged_counts.xlsx"
-                    ),
+                    os.path.join(tta_subfolder, "count_results_averaged.xlsx"),
                     index=False,
                 )
 
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
             metadata = f"""Experiment time: {current_date}
-TTA prediction on 2-stack
+Prediction on 2-stack
+Detection mode: Detection with TTA
 Image name: {name}
 Detection model: {Select_model}
 Augmentations used: {' + '.join(best_augs)}
 Per‑augmentation thresholds: {aug_thresholds}
 Averaged counts per frame: {avg_counts.tolist()}
+Output format: {Output_format}
 SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Postprocess}, match_metric={Match_metric}, iou_thr={Intersection_threshold}
 """
-            metadata_path = os.path.join(subfolder, f"{name}_TTA_metadata.txt")
-            with open(metadata_path, "w", encoding="utf-8") as f:
-                f.write(metadata)
-            show_info(f"TTA results saved in {subfolder}")
+            _save_metadata(metadata, tta_subfolder, "metadata.txt")
+            show_info(f"TTA results saved in {tta_subfolder}")
 
         viewer.window._status_bar._toggle_activity_dock(False)
         return
 
+    # ============================== DYNAMIC ============================
     if use_dynamic:
         with open(Mode_file, "rb") as f:
             model_data = pickle.load(f)
@@ -947,41 +1080,50 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
             )
             os.makedirs(dynamic_folder, exist_ok=True)
 
-            df = pd.DataFrame.from_dict(result_table)
-            if Save_format in ("CSV", "Both"):
-                df.to_csv(
-                    os.path.join(dynamic_folder, f"{name}_dynamic_counts.csv"),
-                    index=False,
+            _save_counts_table(
+                result_table,
+                dynamic_folder,
+                Save_format,
+                filename="count_results",
+            )
+
+            # Save points or boxes
+            if Output_format == "Points":
+                _save_points_csv(
+                    all_points,
+                    os.path.join(dynamic_folder, "result_points.csv"),
                 )
-            if Save_format in ("XLSX", "Both"):
-                df.to_excel(
-                    os.path.join(
-                        dynamic_folder, f"{name}_dynamic_counts.xlsx"
-                    ),
-                    index=False,
+            else:
+                _save_boxes_csv(
+                    all_boxes,
+                    os.path.join(dynamic_folder, "result_boxes.csv"),
                 )
+
+            import shutil
+
+            shutil.copy2(
+                Mode_file,
+                os.path.join(dynamic_folder, "dynamic_threshold_used.pkl"),
+            )
 
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
             metadata = f"""Experiment time: {current_date}
-Dynamic threshold prediction on 2-stack
+Prediction on 2-stack
+Detection mode: Detection with Dynamic threshold
 Image name: {name}
 Detection model: {Select_model}
 Dynamic threshold .pkl file: {Mode_file.name}
-Number of detections before filtering: {len(det_list)}
-Number of detections after filtering: {total_filtered}
+Total number of detections after filtering: {total_filtered}
+Output format: {Output_format}
 SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Postprocess}, match_metric={Match_metric}, iou_thr={Intersection_threshold}
 """
-            metadata_path = os.path.join(
-                dynamic_folder, f"{name}_dynamic_metadata.txt"
-            )
-            with open(metadata_path, "w", encoding="utf-8") as f:
-                f.write(metadata)
+            _save_metadata(metadata, dynamic_folder, "metadata.txt")
             show_info(f"Dynamic threshold results saved in {dynamic_folder}")
 
         viewer.window._status_bar._toggle_activity_dock(False)
         return
 
-    # ========== REGULAR DETECTION (FIXED) ==========
+    # =========================== REGULAR DETECTION =====================
     initialization_pbar = progress(total=0, desc="Initializing model")
     detection_model, model_type = initialize_model(
         rf"{Select_model}", Confidence_threshold, cuda_available
@@ -1055,7 +1197,6 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
                     center_y = int((y1 + y2) / 2)
                     all_points.append([i, j, center_y, center_x])
 
-                    # Box vertices (i, j, y, x)
                     y1_int = int(y1)
                     x1_int = int(x1)
                     y2_int = int(y2)
@@ -1132,32 +1273,37 @@ SAHI parameters used: size={Sahi_size}, overlap={Sahi_overlap}, postprocess={Pos
         subfolder = create_unique_subfolder(
             str(Save_folder), str(Experiment_name)
         )
-        df = pd.DataFrame.from_dict(result_table)
-        if Save_format in ("CSV", "Both"):
-            df.to_csv(
-                os.path.join(subfolder, f"{name} count results.csv"),
-                index=False,
+
+        _save_counts_table(
+            result_table, subfolder, Save_format, filename="count_results"
+        )
+
+        # Save points or boxes
+        if Output_format == "Points":
+            _save_points_csv(
+                all_points,
+                os.path.join(subfolder, "result_points.csv"),
             )
-        if Save_format in ("XLSX", "Both"):
-            df.to_excel(
-                os.path.join(subfolder, f"{name} count results.xlsx"),
-                index=False,
+        else:
+            _save_boxes_csv(
+                all_boxes,
+                os.path.join(subfolder, "result_boxes.csv"),
             )
 
         current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
         metadata = f"""Experiment time: {current_date}
 Prediction on 2-stack
+Detection mode: Regular detection
 Image name: {name}
 Detection model: {Select_model}
 Model type: {model_type}
 Confidence threshold: {Confidence_threshold}
+Output format: {Output_format}
 Postprocess algorithm: {Postprocess}
 Match metric: {Match_metric}
 Intersection threshold: {Intersection_threshold}
 SAHI size: {Sahi_size}
 SAHI overlap: {Sahi_overlap}"""
-        metadata_path = os.path.join(subfolder, f"{name} count metadata.txt")
-        with open(metadata_path, "w", encoding="utf-8") as f:
-            f.write(metadata)
+        _save_metadata(metadata, subfolder, "metadata.txt")
 
     show_info("Made predictions for 2-stack successfully!")

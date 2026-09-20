@@ -36,6 +36,7 @@ To learn more about the algorithms behind the project, navigate to general infor
    General information/Confidence threshold calibration.rst
    General information/Dynamic confidence threshold.rst
    General information/Test-time augmentations (TTA).rst
+   General information/Density maps.rst
 
 To learn more about widgets and their functions, navigate to the widget page you need:
 

@@ -1,3 +1,4 @@
+import json
 import os
 import pathlib
 import pickle
@@ -15,7 +16,7 @@ from magicgui import magic_factory
 from matplotlib import pyplot as plt
 from napari.layers import Image, Points
 from napari.utils import progress
-from napari.utils.notifications import show_error, show_info
+from napari.utils.notifications import show_info
 from sahi.predict import get_sliced_prediction
 from scipy.ndimage import gaussian_filter
 from sklearn.model_selection import GridSearchCV
@@ -28,7 +29,11 @@ try:
 except ImportError:
     from numpy.lib.stride_tricks import sliding_window_view as view_as_windows
 
-from napari_nuclephaser.utils import create_unique_subfolder, initialize_model
+from napari_nuclephaser.utils import (
+    create_unique_subfolder,
+    initialize_model,
+    show_modal_error,
+)
 
 warnings.filterwarnings(action="ignore", category=FutureWarning)
 warnings.filterwarnings(action="ignore", category=UserWarning)
@@ -38,11 +43,62 @@ cuda_available = "cuda:0" if cuda.is_available() else "cpu"
 models_folder = pathlib.Path(pathlib.Path(__file__).parent / "models")
 first_model = next((x for x in models_folder.iterdir() if x.is_file()), None)
 
+CONFIG_PATH = pathlib.Path.home() / ".napari_nuclephaser.json"
+
+
+def _load_last_folder():
+    try:
+        with open(CONFIG_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        path_str = data.get("last_folder", ".")
+        if not isinstance(path_str, str) or not path_str.strip():
+            return pathlib.Path(".")
+        return pathlib.Path(path_str)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return pathlib.Path(".")
+
+
+def _save_last_folder(value):
+    try:
+        data = {}
+        if CONFIG_PATH.is_file():
+            try:
+                with open(CONFIG_PATH, encoding="utf-8") as f:
+                    data = json.load(f)
+                if not isinstance(data, dict):
+                    data = {}
+            except (OSError, ValueError):
+                data = {}
+        data["last_folder"] = str(value)
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except OSError:
+        pass
+
+
+DEFAULT_FOLDER = _load_last_folder()
+
 
 def _ensure_numpy(arr):
     if hasattr(arr, "__module__") and arr.__module__.startswith("dask"):
         return arr.compute()
     return arr
+
+
+def _save_points_csv(points_data, csv_path):
+    """Save points in napari-readable CSV format (index, axis-0, ...)."""
+    points_data = np.asarray(points_data)
+    if points_data.ndim != 2:
+        points_data = points_data.reshape(len(points_data), -1)
+
+    n_points = len(points_data)
+    n_dims = points_data.shape[1] if n_points else 0
+
+    data = {"index": np.arange(n_points)}
+    for dim in range(n_dims):
+        data[f"axis-{dim}"] = points_data[:, dim]
+
+    pd.DataFrame(data).to_csv(csv_path, index=False)
 
 
 def _split_image_and_points(
@@ -88,12 +144,6 @@ def blur_image(image: np.ndarray, sigma: float = 5.0) -> np.ndarray:
         img_float, sigma=sigma_blur, mode="nearest"
     )
     return np.clip(blurred_float, 0, 255).astype(np.uint8)
-
-
-def apply_random_augmentations(
-    image, gamma_range=(0.7, 1.3), noise_sigma_range=(2, 15)
-):
-    return image
 
 
 def extract_features_grayscale(region):
@@ -213,15 +263,10 @@ def build_threshold_map(
         win_size = max(h, w)
         stride = win_size
 
-    x_starts = list(range(0, w - win_size + 1, stride))
-    y_starts = list(range(0, h - win_size + 1, stride))
-    if x_starts[-1] + win_size < w:
-        x_starts.append(w - win_size)
-    if y_starts[-1] + win_size < h:
-        y_starts.append(h - win_size)
-
     windows = view_as_windows(tile_gray, (win_size, win_size), step=stride)
     n_y, n_x, win_h, win_w = windows.shape
+    x_starts = [i * stride for i in range(n_x)]
+    y_starts = [i * stride for i in range(n_y)]
 
     windows_flat = windows.reshape(-1, win_h, win_w).astype(np.float64)
 
@@ -344,7 +389,10 @@ def build_threshold_map(
         "choices": ["IOS", "IOU"],
         "tooltip": "Metric to decide when two detections overlap.",
     },
-    Save_folder={"mode": "d"},
+    Save_folder={
+        "mode": "d",
+        "value": DEFAULT_FOLDER,
+    },
     Sahi_size={
         "max": 100000,
         "tooltip": "Size of sliding window for sliced inference (pixels).",
@@ -370,7 +418,7 @@ def calibrate_with_dynamic_threshold(
     Division_size=640,
     Calibration_proportion=0.5,
     Max_blur_strength=6,
-    Save_folder=pathlib.Path(),
+    Save_folder=DEFAULT_FOLDER,
     Experiment_name="Experiment",
     ADVANCED_SETTINGS="",
     Random_seed=42,
@@ -384,29 +432,44 @@ def calibrate_with_dynamic_threshold(
     points_data = _ensure_numpy(Select_Points_layer.data)
 
     if len(points_data) == 0:
-        show_error("Points layer is empty!")
+        show_modal_error("Points layer is empty! Can't proceed further")
         return None
 
-    if image_data.ndim == 2 or (
-        image_data.ndim == 3 and image_data.shape[-1] in (1, 3, 4)
-    ):
+    image_ndim = image_data.ndim
+    if image_ndim == 2:
         n_frames = 1
         images = [image_data]
-    elif (
-        image_data.ndim == 3
-        or image_data.ndim == 4
-        and image_data.shape[-1] in (1, 3, 4)
-    ):
-        n_frames = image_data.shape[0]
-        images = [image_data[i] for i in range(n_frames)]
+    elif image_ndim == 3:
+        if image_data.shape[-1] in (1, 3, 4):
+            n_frames = 1
+            images = [image_data]
+        else:
+            n_frames = image_data.shape[0]
+            images = [image_data[i] for i in range(n_frames)]
+    elif image_ndim == 4:
+        if image_data.shape[-1] in (1, 3, 4):
+            n_frames = image_data.shape[0]
+            images = [image_data[i] for i in range(n_frames)]
+        else:
+            show_modal_error(
+                "2-dimensional stacks are not supported. "
+                "Provide a single image or a 1-stack."
+            )
+            return None
+    elif image_ndim == 5:
+        show_modal_error(
+            "2-dimensional stacks are not supported. "
+            "Provide a single image or a 1-stack."
+        )
+        return None
     else:
-        show_error("Unsupported image dimensions.")
+        show_modal_error("Unsupported image dimensions.")
         return None
 
     if points_data.ndim == 2:
         if points_data.shape[1] == 2:
             if n_frames != 1:
-                show_error(
+                show_modal_error(
                     "Points have 2 columns but multiple frames. Select the valid points layer."
                 )
                 return None
@@ -417,12 +480,12 @@ def calibrate_with_dynamic_threshold(
                 t, y, x = int(pt[0]), pt[1], pt[2]
                 points_per_frame[t].append((y, x))
         else:
-            show_error(
+            show_modal_error(
                 f"Points layer has {points_data.shape[1]} columns. Expected 2 or 3."
             )
             return None
     else:
-        show_error("Points layer must be 2D.")
+        show_modal_error("Points layer must be 2D.")
         return None
 
     for t in range(n_frames):
@@ -431,12 +494,18 @@ def calibrate_with_dynamic_threshold(
 
     frames_with_images = [t for t in range(n_frames) if t < len(images)]
     if not frames_with_images:
-        show_error("No valid frames found.")
+        show_modal_error("No valid frames found.")
         return None
+
+    if not Save_folder:
+        show_modal_error("Please select a save folder.")
+        return None
+
+    _save_last_folder(Save_folder)
 
     sigmas = list(range(Max_blur_strength + 1))
     if not sigmas:
-        show_error("Max_blur_strength must be >= 0.")
+        show_modal_error("Max_blur_strength must be >= 0.")
         return None
 
     viewer.window._status_bar._toggle_activity_dock(True)
@@ -535,7 +604,8 @@ def calibrate_with_dynamic_threshold(
             pbar.update(1)
 
     if not calib_data:
-        show_error("No calibration tiles found (no points in any tile).")
+        show_modal_error("No calibration tiles found (no points in any tile).")
+        viewer.window._status_bar._toggle_activity_dock(False)
         return None
 
     samples_X = []
@@ -558,8 +628,7 @@ def calibrate_with_dynamic_threshold(
 
             for sigma in sigmas:
                 np.random.seed(Random_seed + sigma + frame)
-                aug_tile = apply_random_augmentations(tile_gray)
-                blurred = blur_image(aug_tile, sigma)
+                blurred = blur_image(tile_gray, sigma)
 
                 phase_rgb = cv2.cvtColor(blurred, cv2.COLOR_GRAY2RGB)
                 result = get_sliced_prediction(
@@ -604,9 +673,10 @@ def calibrate_with_dynamic_threshold(
                 pbar.update(1)
 
     if not samples_X:
-        show_error(
+        show_modal_error(
             "No training samples collected (no detections or no reference points)."
         )
+        viewer.window._status_bar._toggle_activity_dock(False)
         return None
 
     tuning_pbar = progress(total=0, desc="Tuning dynamic threshold")
@@ -907,14 +977,11 @@ def calibrate_with_dynamic_threshold(
             f,
         )
 
-    points_to_save = []
-    for frame, pts in points_per_frame.items():
-        for y, x in pts:
-            points_to_save.append([frame, y, x])
-    if points_to_save:
-        pd.DataFrame(points_to_save, columns=["frame", "y", "x"]).to_csv(
-            os.path.join(dynamic_folder, "reference_points.csv"), index=False
-        )
+    # Save reference points in napari-readable CSV format
+    _save_points_csv(
+        points_data,
+        os.path.join(dynamic_folder, "reference_points.csv"),
+    )
 
     comparison_summary = ""
     for sigma in sigmas:

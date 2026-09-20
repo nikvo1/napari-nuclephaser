@@ -1,4 +1,4 @@
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 # from .widget import widget_factory
 # my_project/__init__.py
 from .patches import apply_sahi_patches

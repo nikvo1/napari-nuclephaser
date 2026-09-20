@@ -4,7 +4,7 @@ import pathlib
 import numpy as np
 import pandas as pd
 from magicgui import magic_factory
-from napari.layers import Points
+from napari.layers import Layer, Points, Shapes
 from napari.utils.notifications import show_error, show_info
 
 from napari_nuclephaser.utils import (
@@ -12,11 +12,101 @@ from napari_nuclephaser.utils import (
 )
 
 
+def _count_points(points_data):
+    """Count Points layer data. Returns (result_table, summary)."""
+    if len(points_data) == 0:
+        return {"Frame": [], "Count": []}, "No points."
+
+    ndim = points_data.shape[1]
+
+    if ndim == 2:
+        total = len(points_data)
+        return {"Frame": [0], "Count": [total]}, f"Total points: {total}"
+    elif ndim == 3:
+        frames = points_data[:, 0].astype(int)
+        unique_frames, counts = np.unique(frames, return_counts=True)
+        return {
+            "Frame": unique_frames.tolist(),
+            "Count": counts.tolist(),
+        }, f"Counted points across {len(unique_frames)} frames."
+    elif ndim == 4:
+        dim1 = points_data[:, 0].astype(int)
+        dim2 = points_data[:, 1].astype(int)
+        df_temp = pd.DataFrame({"dim1": dim1, "dim2": dim2})
+        grouped = (
+            df_temp.groupby(["dim1", "dim2"]).size().reset_index(name="Count")
+        )
+        return {
+            "Dimension 1 frame": grouped["dim1"].tolist(),
+            "Dimension 2 frame": grouped["dim2"].tolist(),
+            "Count": grouped["Count"].tolist(),
+        }, f"Counted points across {len(grouped)} (dim1, dim2) pairs."
+    else:
+        raise ValueError(
+            f"Unsupported point dimensionality: {ndim}. "
+            "Expected 2 (single image), 3 (1‑stack) or 4 (2‑stack)."
+        )
+
+
+def _count_shapes(shapes_data):
+    """Count Shapes layer data (list of vertex arrays).
+
+    The frame indices are read from the first vertex of each shape, using
+    the same convention as Points layers: the last two axes are spatial
+    (y, x); all leading axes are stack indices.
+    """
+    if len(shapes_data) == 0:
+        return {"Frame": [], "Count": []}, "No boxes."
+
+    # Determine ndim from the first shape
+    first = np.asarray(shapes_data[0])
+    # Single-vertex shape (ndim==1) is unlikely for boxes, but possible
+    ndim = first.shape[0] if first.ndim == 1 else first.shape[1]
+
+    def _first_vertex_frame_indices(shape):
+        shape_arr = np.asarray(shape)
+        coords = shape_arr if shape_arr.ndim == 1 else shape_arr[0]
+        if ndim <= 2:
+            return (0,)
+        return tuple(int(coords[k]) for k in range(ndim - 2))
+
+    if ndim == 2:
+        total = len(shapes_data)
+        return {"Frame": [0], "Count": [total]}, f"Total boxes: {total}"
+    elif ndim == 3:
+        frame_indices = np.array(
+            [_first_vertex_frame_indices(s)[0] for s in shapes_data]
+        )
+        unique_frames, counts = np.unique(frame_indices, return_counts=True)
+        return {
+            "Frame": unique_frames.tolist(),
+            "Count": counts.tolist(),
+        }, f"Counted boxes across {len(unique_frames)} frames."
+    elif ndim == 4:
+        pairs = [_first_vertex_frame_indices(s) for s in shapes_data]
+        dim1_list = [p[0] for p in pairs]
+        dim2_list = [p[1] for p in pairs]
+        df_temp = pd.DataFrame({"dim1": dim1_list, "dim2": dim2_list})
+        grouped = (
+            df_temp.groupby(["dim1", "dim2"]).size().reset_index(name="Count")
+        )
+        return {
+            "Dimension 1 frame": grouped["dim1"].tolist(),
+            "Dimension 2 frame": grouped["dim2"].tolist(),
+            "Count": grouped["Count"].tolist(),
+        }, f"Counted boxes across {len(grouped)} (dim1, dim2) pairs."
+    else:
+        raise ValueError(
+            f"Unsupported shape dimensionality: {ndim}. "
+            "Expected 2 (single image), 3 (1‑stack) or 4 (2‑stack)."
+        )
+
+
 @magic_factory(
     auto_call=False,
     call_button="Count",
     result_widget=True,
-    Points_layer={"label": "Select points layer"},
+    Input_layer={"label": "Select Points or Shapes layer"},
     Save_result={"tooltip": "Save count results to a folder"},
     Experiment_name={"tooltip": "Subfolder name for the results"},
     Save_csv={"tooltip": "Save results as CSV"},
@@ -24,7 +114,7 @@ from napari_nuclephaser.utils import (
     Save_folder={"mode": "d", "tooltip": "Folder where results will be saved"},
 )
 def count_points_in_stack(
-    Points_layer: Points,
+    Input_layer: Layer,
     Save_result: bool = True,
     Save_folder: pathlib.Path = pathlib.Path(),
     Experiment_name: str = "PointsCount",
@@ -32,60 +122,47 @@ def count_points_in_stack(
     Save_xlsx: bool = True,
 ) -> str:
     """
-    Count points in a Points layer that represents a single image, a 1‑dimensional stack,
-    or a 2‑dimensional stack. Points coordinates are assumed to be:
+    Count points (Points layer) or boxes (Shapes layer) that represent a
+    single image, a 1‑dimensional stack, or a 2‑dimensional stack.
+
+    Coordinate layout is assumed to be:
       - (y, x) for a single image,
       - (frame, y, x) for a 1‑stack,
       - (dim1, dim2, y, x) for a 2‑stack.
-    The function returns a table of counts per frame (or per (dim1, dim2) pair) and
-    optionally saves it as CSV/XLSX.
+
+    For Shapes layers, each shape is assigned to a frame using the leading
+    (non‑spatial) coordinates of its first vertex.
+
+    Returns a summary string; optionally saves a per‑frame count table
+    as CSV and/or XLSX.
     """
-    points_data = Points_layer.data
-
-    if points_data is None or len(points_data) == 0:
-        show_error("The selected Points layer is empty.")
-        return "No points to count."
-
-    # Determine dimensionality
-    ndim = points_data.shape[1] if len(points_data.shape) == 2 else 0
-    if ndim not in (2, 3, 4):
+    if not isinstance(Input_layer, Points | Shapes):
         show_error(
-            f"Unsupported point dimensionality: {ndim}. "
-            "Expected 2 (single image), 3 (1‑stack) or 4 (2‑stack)."
+            "Please select a Points or Shapes layer. "
+            f"Got: {type(Input_layer).__name__}."
         )
-        return "Invalid point data shape."
+        return "Invalid layer type."
 
-    if ndim == 2:
-        # Single image: total count
-        total = len(points_data)
-        result_table = {"Frame": [0], "Count": [total]}
-        summary = f"Total points: {total}"
-    elif ndim == 3:
-        # 1‑dimensional stack: group by first coordinate (frame index)
-        frames = points_data[:, 0].astype(int)
-        unique_frames, counts = np.unique(frames, return_counts=True)
-        result_table = {"Frame": unique_frames, "Count": counts}
-        summary = f"Counted points across {len(unique_frames)} frames."
-    else:  # ndim == 4
-        # 2‑dimensional stack: group by first two coordinates (dim1, dim2)
-        dim1 = points_data[:, 0].astype(int)
-        dim2 = points_data[:, 1].astype(int)
-        # Use pandas for easy groupby
-        df_temp = pd.DataFrame({"dim1": dim1, "dim2": dim2})
-        grouped = (
-            df_temp.groupby(["dim1", "dim2"]).size().reset_index(name="Count")
-        )
-        result_table = {
-            "Dimension 1 frame": grouped["dim1"].values,
-            "Dimension 2 frame": grouped["dim2"].values,
-            "Count": grouped["Count"].values,
-        }
-        summary = f"Counted points across {len(grouped)} (dim1, dim2) pairs."
+    data = Input_layer.data
+    layer_name = Input_layer.name
 
-    # Show info in napari
+    if data is None or len(data) == 0:
+        show_error("The selected layer is empty.")
+        return "Nothing to count."
+
+    is_shapes = isinstance(Input_layer, Shapes)
+
+    try:
+        if is_shapes:
+            result_table, summary = _count_shapes(data)
+        else:
+            result_table, summary = _count_points(np.asarray(data))
+    except ValueError as e:
+        show_error(str(e))
+        return "Invalid data shape."
+
     show_info(summary)
 
-    # Save results if requested
     if Save_result:
         if not Save_folder:
             Save_folder = pathlib.Path.cwd()
@@ -93,21 +170,19 @@ def count_points_in_stack(
             str(Save_folder), str(Experiment_name)
         )
         df = pd.DataFrame.from_dict(result_table)
-        name = Points_layer.name
 
         if Save_csv:
-            csv_path = os.path.join(subfolder, f"{name}_counts.csv")
+            csv_path = os.path.join(subfolder, f"{layer_name}_counts.csv")
             df.to_csv(csv_path, index=False)
             show_info(f"Saved CSV to {csv_path}")
         if Save_xlsx:
-            xlsx_path = os.path.join(subfolder, f"{name}_counts.xlsx")
+            xlsx_path = os.path.join(subfolder, f"{layer_name}_counts.xlsx")
             df.to_excel(xlsx_path, index=False)
             show_info(f"Saved Excel to {xlsx_path}")
         if not Save_csv and not Save_xlsx:
             # default to CSV
-            csv_path = os.path.join(subfolder, f"{name}_counts.csv")
+            csv_path = os.path.join(subfolder, f"{layer_name}_counts.csv")
             df.to_csv(csv_path, index=False)
             show_info(f"Saved CSV (default) to {csv_path}")
 
-    # Return a string summary that will appear in the magicgui result widget
     return summary

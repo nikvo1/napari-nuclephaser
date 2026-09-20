@@ -22,9 +22,11 @@ napari-nuclephaser is an open-source Napari plugin designed for scientists who n
 
 ⭐NEW⭐ NuclePhaser >= 0.2.5 supports calibration on multiple images (with Calibrate with points widget), which provides more stable detection across time series.
 
-⭐NEW⭐ NuclePhaser >= 0.3.0 supports Test-Time Augmentations, which can increase accuracy by sacrificing inference time. Learn more with [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html).
+⭐NEW⭐ NuclePhaser >= 0.3.0 supports Test-Time Augmentations, which can increase accuracy by sacrificing inference time. Learn more with [documentation](file:///C:/Users/nikvo/napari-nuclephaser/docs/_build/html/General%20information/Test-time%20augmentations%20%28TTA%29.html).
 
-⭐NEW⭐ NuclePhaser >= 0.4.0 supports Dynamic Confidence threshold, which allows adapting to changing microscopy conditions, such as contrast, defocus, magnification and cell density. Learn more with [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/index.html).
+⭐NEW⭐ NuclePhaser >= 0.4.0 supports Dynamic Confidence threshold, which allows adapting to changing microscopy conditions, such as contrast, defocus, magnification and cell density. Learn more with [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/General%20information/Dynamic%20confidence%20threshold.html).
+
+⭐NEW⭐ NuclePhaser >= 0.5.0 supports creating density maps of growing cell population that allow learning spatial density distribution characteristics and can serve as beautiful representative images for a publication figure. Learn more with [documentation](https://napari-nuclephaser.readthedocs.io/en/latest/General%20information/Density%20maps.html).
 
 ## Nuclei detection
 
