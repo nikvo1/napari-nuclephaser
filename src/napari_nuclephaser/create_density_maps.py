@@ -76,8 +76,18 @@ def _save_last_folder(value):
 
 def _extract_frame_and_spatial_shape(image_shape):
     shape = tuple(image_shape)
+
+    if len(shape) == 2:
+        return (), shape
+
     if len(shape) >= 3 and shape[-1] in (1, 3, 4):
         shape = shape[:-1]
+    elif len(shape) >= 3 and shape[-1] < 8:
+        raise ValueError(
+            f"Ambiguous image shape {image_shape}: the last axis "
+            f"({shape[-1]}) is neither a valid colour channel count "
+            "(1, 3 or 4) nor a plausible spatial width."
+        )
 
     if len(shape) == 2:
         return (), shape
@@ -154,7 +164,7 @@ def _find_next_index(folder, requested_index):
         for f in os.listdir(folder):
             if not f.endswith(".npy"):
                 continue
-            m = re.match(r"^(\d{2})(?=[_.])", f)
+            m = re.match(r"^(\d{1,2})(?=[_.])", f)
             if m:
                 idx = int(m.group(1))
                 if 1 <= idx <= 99:
