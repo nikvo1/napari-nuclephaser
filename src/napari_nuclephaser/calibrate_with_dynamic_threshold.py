@@ -54,7 +54,7 @@ def _load_last_folder():
         if not isinstance(path_str, str) or not path_str.strip():
             return pathlib.Path(".")
         return pathlib.Path(path_str)
-    except (OSError, ValueError, TypeError):
+    except (OSError, ValueError, TypeError, AttributeError):
         return pathlib.Path(".")
 
 
@@ -144,12 +144,6 @@ def blur_image(image: np.ndarray, sigma: float = 5.0) -> np.ndarray:
         img_float, sigma=sigma_blur, mode="nearest"
     )
     return np.clip(blurred_float, 0, 255).astype(np.uint8)
-
-
-def apply_random_augmentations(
-    image, gamma_range=(0.7, 1.3), noise_sigma_range=(2, 15)
-):
-    return image
 
 
 def extract_features_grayscale(region):
@@ -438,21 +432,36 @@ def calibrate_with_dynamic_threshold(
     points_data = _ensure_numpy(Select_Points_layer.data)
 
     if len(points_data) == 0:
-        show_modal_error("Points layer is empty!")
+        show_modal_error("Points layer is empty! Can't proceed further")
         return None
 
-    if image_data.ndim == 2 or (
-        image_data.ndim == 3 and image_data.shape[-1] in (1, 3, 4)
-    ):
+    image_ndim = image_data.ndim
+    if image_ndim == 2:
         n_frames = 1
         images = [image_data]
-    elif (
-        image_data.ndim == 3
-        or image_data.ndim == 4
-        and image_data.shape[-1] in (1, 3, 4)
-    ):
-        n_frames = image_data.shape[0]
-        images = [image_data[i] for i in range(n_frames)]
+    elif image_ndim == 3:
+        if image_data.shape[-1] in (1, 3, 4):
+            n_frames = 1
+            images = [image_data]
+        else:
+            n_frames = image_data.shape[0]
+            images = [image_data[i] for i in range(n_frames)]
+    elif image_ndim == 4:
+        if image_data.shape[-1] in (1, 3, 4):
+            n_frames = image_data.shape[0]
+            images = [image_data[i] for i in range(n_frames)]
+        else:
+            show_modal_error(
+                "2-dimensional stacks are not supported. "
+                "Provide a single image or a 1-stack."
+            )
+            return None
+    elif image_ndim == 5:
+        show_modal_error(
+            "2-dimensional stacks are not supported. "
+            "Provide a single image or a 1-stack."
+        )
+        return None
     else:
         show_modal_error("Unsupported image dimensions.")
         return None
@@ -596,6 +605,7 @@ def calibrate_with_dynamic_threshold(
 
     if not calib_data:
         show_modal_error("No calibration tiles found (no points in any tile).")
+        viewer.window._status_bar._toggle_activity_dock(False)
         return None
 
     samples_X = []
@@ -618,8 +628,7 @@ def calibrate_with_dynamic_threshold(
 
             for sigma in sigmas:
                 np.random.seed(Random_seed + sigma + frame)
-                aug_tile = apply_random_augmentations(tile_gray)
-                blurred = blur_image(aug_tile, sigma)
+                blurred = blur_image(tile_gray, sigma)
 
                 phase_rgb = cv2.cvtColor(blurred, cv2.COLOR_GRAY2RGB)
                 result = get_sliced_prediction(
@@ -667,6 +676,7 @@ def calibrate_with_dynamic_threshold(
         show_modal_error(
             "No training samples collected (no detections or no reference points)."
         )
+        viewer.window._status_bar._toggle_activity_dock(False)
         return None
 
     tuning_pbar = progress(total=0, desc="Tuning dynamic threshold")
